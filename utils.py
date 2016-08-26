@@ -50,9 +50,10 @@ def rollout(env, agent, max_pathlength, n_timesteps):
 class VF(object):
     coeffs = None
 
-    def __init__(self, session):
+    def __init__(self, session, type="origin"):
         self.net = None
         self.session = session
+        self.type = type
 
     def create_net(self, shape):
         print(shape)
@@ -68,13 +69,18 @@ class VF(object):
         self.session.run(tf.initialize_all_variables())
 
     def _features(self, path):
-        o = path["obs"].astype('float32')
-        o = o.reshape(o.shape[0], -1)
-        act = path["action_dists"].astype('float32')
-        l = len(path["rewards"])
-        al = np.arange(l).reshape(-1, 1) / 10.0
-        ret = np.concatenate([o, act, al, np.ones((l, 1))], axis=1)
+        if self.type == "origin":
+            o = path["obs"].astype('float32')
+            o = o.reshape(o.shape[0], -1)
+            act = path["action_dists"].astype('float32')
+            l = len(path["rewards"])
+            al = np.arange(l).reshape(-1, 1) / 10.0
+            # up to down stack obs, action_dst, al, np.ones((l,1))
+            ret = np.concatenate([o, act, al, np.ones((l, 1))], axis=1)
+        elif self.type == "gray_image":
+            ret = path["obs"].astype('float32')
         return ret
+
 
     def fit(self, paths):
         featmat = np.concatenate([self._features(path) for path in paths])

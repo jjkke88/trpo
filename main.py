@@ -15,7 +15,7 @@ logging.getLogger().setLevel(logging.DEBUG)
 if len(sys.argv) > 1:
     task = sys.argv[1]
 else:
-    task = "Breakout-v0"
+    task = "CartPole-v0"
 env = gym.make(task)
 # env.monitor.start(training_dir)
 
