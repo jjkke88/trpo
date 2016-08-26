@@ -115,7 +115,10 @@ class SpaceConversionEnv(Env):
         if self._verbose and self.observation_convert != ident4obj:
             print("Input observation: %s, converted observation: %s" % (observation, conv_observation))
         return conv_observation
-  
+
+    def render(self):
+        self._env.render()
+
     @property
     def action_space(self):
         return self._action_space_
