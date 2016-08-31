@@ -28,20 +28,25 @@ class TRPOAgent(object):
         print("Action Space", env.action_space)
         self.session = tf.Session()
         self.end_count = 0
+        self.paths = []
         self.train = True
+        self.storage = Storage(self, self.env)
+        self.init_network()
+
+    def init_network(self):
         self.obs = obs = tf.placeholder(
-            dtype, shape=[
-                None, 2 * env.observation_space.shape[0] + env.action_space.n], name="obs")
-        self.prev_obs = np.zeros((1, env.observation_space.shape[0]))
-        self.prev_action = np.zeros((1, env.action_space.n))
+            dtype, shape=pms.obs_shape, name="obs")
+        self.prev_obs = np.zeros((1, self.env.observation_space.shape[0]))
+        self.prev_action = np.zeros((1, self.env.action_space.n))
         self.action = action = tf.placeholder(tf.int64, shape=[None], name="action")
         self.advant = advant = tf.placeholder(dtype, shape=[None], name="advant")
-        self.oldaction_dist = oldaction_dist = tf.placeholder(dtype, shape=[None, env.action_space.n], name="oldaction_dist")
+        self.oldaction_dist = oldaction_dist = tf.placeholder(dtype, shape=[None, self.env.action_space.n],
+                                                              name="oldaction_dist")
 
         # Create neural network.
         action_dist_n, _ = (pt.wrap(self.obs).
                             fully_connected(64, activation_fn=tf.nn.tanh).
-                            softmax_classifier(env.action_space.n))
+                            softmax_classifier(self.env.action_space.n))
         eps = 1e-6
         self.action_dist_n = action_dist_n
         N = tf.shape(obs)[0]
@@ -49,12 +54,14 @@ class TRPOAgent(object):
         oldp_n = slice_2d(oldaction_dist, tf.range(0, N), action)
         ratio_n = p_n / oldp_n
         Nf = tf.cast(N, dtype)
+
         surr = -tf.reduce_mean(ratio_n * advant)  # Surrogate loss
-        var_list = tf.trainable_variables()
         kl = tf.reduce_sum(oldaction_dist * tf.log((oldaction_dist + eps) / (action_dist_n + eps))) / Nf
         ent = tf.reduce_sum(-action_dist_n * tf.log(action_dist_n + eps)) / Nf
 
         self.losses = [surr, kl, ent]
+
+        var_list = tf.trainable_variables()
         self.pg = flatgrad(surr, var_list)
         # KL divergence where first arg is fixed
         # replace old->tf.stop_gradient from previous kl
@@ -76,7 +83,9 @@ class TRPOAgent(object):
         self.sff = SetFromFlat(self.session, var_list)
         self.vf = VF(self.session)
         self.session.run(tf.initialize_all_variables())
-        self.storage = Storage(self, self.env)
+        self.saver = tf.train.Saver(max_to_keep=10)
+        self.writer = tf.train.SummaryWriter("log", self.session.graph)
+        self.load_model()
 
     def act(self, obs, *args):
         obs = np.expand_dims(obs, 0)
@@ -103,6 +112,7 @@ class TRPOAgent(object):
             print("Rollout")
             paths = self.storage.get_paths() # get_paths
             # Computing returns and estimating advantage function.
+
             for path in paths:
                 path["baseline"] = self.vf.predict(path)
                 path["returns"] = discount(path["rewards"], pms.gamma)
@@ -148,8 +158,11 @@ class TRPOAgent(object):
                     return self.session.run(self.fvp, feed) + config.cg_damping * p
 
                 g = self.session.run(self.pg, feed_dict=feed)
+                # g_input = tf.placeholder(dtype="float32",shape=None,name="g")
+                # summary_g_op = tf.scalar_summary('g', g_input)
+                # self.writer.add_summary(self.session.run(summary_g_op, feed_dict={g_input:np.mean(g)}))
                 stepdir = conjugate_gradient(fisher_vector_product, -g)
-                shs = .5 * stepdir.dot(fisher_vector_product(stepdir))
+                shs = .5 * stepdir.dot(fisher_vector_product(stepdir)) # theta
                 lm = np.sqrt(shs / config.max_kl)
                 fullstep = stepdir / lm
                 neggdotstepdir = -g.dot(stepdir)
@@ -182,4 +195,19 @@ class TRPOAgent(object):
                     exit(-1)
                 if exp > 0.8:
                     self.train = False
+                self.save_model("iter"+str(i))
             i += 1
+
+    def test(self, model_name="checkpoint/checkpoint"):
+        self.load_model(model_name)
+        self.storage.get_paths()
+
+    def save_model(self, model_name):
+        self.saver.save(self.session, "checkpoint/"+model_name+".ckpt")
+
+    def load_model(self, model_name="checkpoint/checkpoint"):
+        try:
+            self.saver.restore(self.session, model_name)
+        except:
+            print "load model %s fail"%(model_name)
+

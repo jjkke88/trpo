@@ -124,10 +124,10 @@ def numel(x):
 
 def flatgrad(loss, var_list):
     grads = tf.gradients(loss, var_list)
-    return tf.concat(0, [tf.reshape(grad, [numel(v)])
-                         for (v, grad) in zip(var_list, grads)])
+    return tf.concat(0, [tf.reshape(grad, [np.prod(var_shape(v))])
+                         for (grad, v) in zip( grads, var_list)])
 
-
+# set theta
 class SetFromFlat(object):
 
     def __init__(self, session, var_list):
@@ -154,7 +154,7 @@ class SetFromFlat(object):
     def __call__(self, theta):
         self.session.run(self.op, feed_dict={self.theta: theta})
 
-
+# get theta
 class GetFlat(object):
 
     def __init__(self, session, var_list):

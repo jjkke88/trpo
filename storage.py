@@ -23,7 +23,8 @@ class Storage(object):
                 actions.append(action)
                 action_dists.append(action_dist)
                 res = self.env.step(action) # res
-                self.env.render()
+                if pms.render:
+                    self.env.render()
                 ob = res[0]
                 rewards.append(res[1])
                 episode_steps += 1
