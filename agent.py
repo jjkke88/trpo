@@ -16,7 +16,8 @@ class TRPOAgent(object):
         "max_pathlength": 10000,
         "max_kl": 0.01,
         "cg_damping": 0.1,
-        "gamma": 0.95})
+        "gamma": 0.95,
+        "deviation":0.1})
 
     def __init__(self, env):
         self.env = env
@@ -26,6 +27,7 @@ class TRPOAgent(object):
         #     exit(-1)
         print("Observation Space", env.observation_space)
         print("Action Space", env.action_space)
+        print("Action area, high:%f, low%f"%(env.action_space.high, env.action_space.low))
         self.session = tf.Session()
         self.end_count = 0
         self.paths = []
@@ -35,38 +37,42 @@ class TRPOAgent(object):
 
     def init_network(self):
         self.obs = obs = tf.placeholder(
-            dtype, shape=pms.obs_shape, name="obs")
-        self.prev_obs = np.zeros((1, self.env.observation_space.shape[0]))
-        self.prev_action = np.zeros((1, self.env.action_space.n))
-        self.action = action = tf.placeholder(tf.int64, shape=[None], name="action")
-        self.advant = advant = tf.placeholder(dtype, shape=[None], name="advant")
-        self.oldaction_dist = oldaction_dist = tf.placeholder(dtype, shape=[None, self.env.action_space.n],
-                                                              name="oldaction_dist")
-
+            dtype, shape=[None, pms.obs_shape], name="obs")
         # Create neural network.
-        action_dist_n, _ = (pt.wrap(self.obs).
-                            fully_connected(64, activation_fn=tf.nn.tanh).
-                            softmax_classifier(self.env.action_space.n))
+        self.action_dist_n = action_dist_n = (pt.wrap(self.obs).
+                            fully_connected(64, activation_fn=tf.nn.relu).
+                            fully_connected(2*pms.action_shape))
+
+        self.N = N = tf.shape(obs)[0]
+        self.dist_mean = tf.slice(self.action_dist_n, [0, 0],[N, pms.action_shape])
+        self.dist_r = tf.slice(self.action_dist_n, [0, pms.action_shape],[N, pms.action_shape])
+        self.advant = advant = tf.placeholder(dtype, shape=[None], name="advant")
+        self.oldaction_dist = oldaction_dist = tf.placeholder(dtype, shape=[None, 2*pms.action_shape],
+                                                              name="oldaction_dist")
+        self.old_dist_r = tf.slice(self.oldaction_dist, [0, pms.action_shape],[N, pms.action_shape])
         eps = 1e-6
-        self.action_dist_n = action_dist_n
-        N = tf.shape(obs)[0]
-        p_n = slice_2d(action_dist_n, tf.range(0, N), action)
-        oldp_n = slice_2d(oldaction_dist, tf.range(0, N), action)
-        ratio_n = p_n / oldp_n
+
+        # function slice_2d choose the probability of action, for action is int, slice is needed, for
+        # continous condition, slice is unneeded.
+        self.p_n = p_n =1.0/(2.0*pms.PI*tf.exp(tf.reduce_sum(self.dist_r, 1)))
+        self.oldp_n = oldp_n = 1.0/(2.0*pms.PI*tf.exp(tf.reduce_sum(self.old_dist_r, 1)))
+        self.ratio_n = ratio_n = p_n / oldp_n
         Nf = tf.cast(N, dtype)
 
         surr = -tf.reduce_mean(ratio_n * advant)  # Surrogate loss
-        kl = tf.reduce_sum(oldaction_dist * tf.log((oldaction_dist + eps) / (action_dist_n + eps))) / Nf
-        ent = tf.reduce_sum(-action_dist_n * tf.log(action_dist_n + eps)) / Nf
+        self.kl = kl = tf.reduce_sum(oldp_n * tf.log((oldp_n + eps) / (p_n + eps))) / Nf
+        ent = tf.reduce_sum(-p_n * tf.log(p_n + eps)) / Nf
 
         self.losses = [surr, kl, ent]
 
         var_list = tf.trainable_variables()
+        # get g
         self.pg = flatgrad(surr, var_list)
+        # get A
         # KL divergence where first arg is fixed
         # replace old->tf.stop_gradient from previous kl
         kl_firstfixed = tf.reduce_sum(tf.stop_gradient(
-            action_dist_n) * tf.log(tf.stop_gradient(action_dist_n + eps) / (action_dist_n + eps))) / Nf
+            p_n) * tf.log(tf.stop_gradient(p_n + eps) / (p_n + eps))) / Nf
         grads = tf.gradients(kl_firstfixed, var_list)
         self.flat_tangent = tf.placeholder(dtype, shape=[None])
         shapes = map(var_shape, var_list)
@@ -78,29 +84,27 @@ class TRPOAgent(object):
             tangents.append(param)
             start += size
         gvp = [tf.reduce_sum(g * t) for (g, t) in zip(grads, tangents)]
-        self.fvp = flatgrad(gvp, var_list)
-        self.gf = GetFlat(self.session, var_list)
-        self.sff = SetFromFlat(self.session, var_list)
+        self.fvp = flatgrad(gvp, var_list) # get kl''*p
+
+        self.gf = GetFlat(self.session, var_list) # get theta from var_list
+        self.sff = SetFromFlat(self.session, var_list) # set theta from var_List
         self.vf = VF(self.session)
         self.session.run(tf.initialize_all_variables())
         self.saver = tf.train.Saver(max_to_keep=10)
         self.writer = tf.train.SummaryWriter("log", self.session.graph)
-        self.load_model()
+        # self.load_model()
 
     def act(self, obs, *args):
         obs = np.expand_dims(obs, 0)
-        self.prev_obs = obs
-        obs_new = np.concatenate([obs, self.prev_obs, self.prev_action], 1)
 
-        action_dist_n = self.session.run(self.action_dist_n, {self.obs: obs_new})
+        action_dist_n = self.session.run(self.action_dist_n, {self.obs: obs})
 
         if self.train:
-            action = int(cat_sample(action_dist_n)[0])
+            action = action_dist_n[0][0:pms.action_shape]
         else:
-            action = int(np.argmax(action_dist_n))
-        self.prev_action *= 0.0
-        self.prev_action[0, action] = 1.0
-        return action, action_dist_n, np.squeeze(obs_new)
+            action = action_dist_n[0][0:pms.action_shape]
+        # self.prev_action[0, action] = 1.0
+        return action, action_dist_n, np.squeeze(obs)
 
     def learn(self):
         config = self.config
@@ -134,7 +138,6 @@ class TRPOAgent(object):
             advant_n /= (advant_n.std() + 1e-8)
 
             feed = {self.obs: obs_n,
-                    self.action: action_n,
                     self.advant: advant_n,
                     self.oldaction_dist: action_dist_n}
 
@@ -151,7 +154,7 @@ class TRPOAgent(object):
                     break
             if self.train:
                 self.vf.fit(paths)
-                thprev = self.gf()
+                thprev = self.gf() # get theta_old
 
                 def fisher_vector_product(p):
                     feed[self.flat_tangent] = p
@@ -173,8 +176,7 @@ class TRPOAgent(object):
                 theta = linesearch(loss, thprev, fullstep, neggdotstepdir / lm)
                 self.sff(theta)
 
-                surrafter, kloldnew, entropy = self.session.run(
-                    self.losses, feed_dict=feed)
+                surrafter, kloldnew, entropy = self.session.run(self.losses, feed_dict=feed)
                 if kloldnew > 2.0 * config.max_kl:
                     self.sff(thprev)
 
@@ -191,21 +193,21 @@ class TRPOAgent(object):
                 stats["Surrogate loss"] = surrafter
                 for k, v in stats.iteritems():
                     print(k + ": " + " " * (40 - len(k)) + str(v))
-                if entropy != entropy:
-                    exit(-1)
+                # if entropy != entropy:
+                #     exit(-1)
                 if exp > 0.8:
                     self.train = False
                 self.save_model("iter"+str(i))
             i += 1
 
-    def test(self, model_name="checkpoint/checkpoint"):
+    def test(self, model_name):
         self.load_model(model_name)
         self.storage.get_paths()
 
     def save_model(self, model_name):
         self.saver.save(self.session, "checkpoint/"+model_name+".ckpt")
 
-    def load_model(self, model_name="checkpoint/checkpoint"):
+    def load_model(self, model_name):
         try:
             self.saver.restore(self.session, model_name)
         except:

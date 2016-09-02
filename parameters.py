@@ -1,12 +1,15 @@
 dims = (100, 100)
 timesteps_per_batch = 1000
-max_pathlength = 1000000
+max_pathlength = 200
 max_kl = 0.01
 cg_damping = 0.1
 gamma = 0.95
-render = False
-train_flag = True
+deviation = 0.1
+PI = 3.1415926
+render = True
+train_flag = False
 # dims of observation, also is the input dims of action network
-obs_shape = [None, 7]
-checkpoint_file = "checkpoint/iter804.ckpt"
-environment_name = "MountainCar-v0"
+obs_shape = 3
+action_shape = 1
+checkpoint_file = "checkpoint/iter18.ckpt"
+environment_name = "Pendulum-v0"

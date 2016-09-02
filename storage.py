@@ -14,8 +14,8 @@ class Storage(object):
         while timesteps_sofar < pms.timesteps_per_batch:
             obs, actions, rewards, action_dists = [], [], [], []
             ob = self.env.reset()
-            self.agent.prev_action *= 0.0
-            self.agent.prev_obs *= 0.0
+            # self.agent.prev_action *= 0.0
+            # self.agent.prev_obs *= 0.0
             episode_steps = 0
             for _ in xrange(pms.max_pathlength):
                 action, action_dist, ob = self.agent.act(ob)
@@ -35,7 +35,7 @@ class Storage(object):
                     "rewards": np.array(rewards),
                     "actions": np.array(actions)}
             paths.append(path)
-            self.agent.prev_action *= 0.0
-            self.agent.prev_obs *= 0.0
+            # self.agent.prev_action *= 0.0
+            # self.agent.prev_obs *= 0.0
             timesteps_sofar += episode_steps
         return paths

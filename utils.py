@@ -56,7 +56,6 @@ class VF(object):
         self.type = type
 
     def create_net(self, shape):
-        print(shape)
         self.x = tf.placeholder(tf.float32, shape=[None, shape], name="x")
         self.y = tf.placeholder(tf.float32, shape=[None], name="y")
         self.net = (pt.wrap(self.x).
@@ -80,7 +79,6 @@ class VF(object):
         elif self.type == "gray_image":
             ret = path["obs"].astype('float32')
         return ret
-
 
     def fit(self, paths):
         featmat = np.concatenate([self._features(path) for path in paths])
@@ -166,6 +164,7 @@ class GetFlat(object):
 
 
 def slice_2d(x, inds0, inds1):
+    # assume that a path have 1000 vector, then ncols=action dims, inds0=1000,inds1=
     inds0 = tf.cast(inds0, tf.int64)
     inds1 = tf.cast(inds1, tf.int64)
     shape = tf.cast(tf.shape(x), tf.int64)
@@ -216,3 +215,12 @@ def explained_variance(ypred, y):
     assert y.ndim == 1 and ypred.ndim == 1
     vary = np.var(y)
     return np.nan if vary==0 else 1 - np.var(y-ypred)/vary
+
+def countMatrixMultiply(matrix):
+    result_end = []
+    for j in matrix:
+        result = 1.0
+        for i in j:
+            result *= i
+        result_end.append(result)
+    return np.array(result_end)
