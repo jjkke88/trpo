@@ -35,9 +35,7 @@ class TRPOAgent(object):
 
     def init_network(self):
         self.obs = obs = tf.placeholder(
-            dtype, shape=pms.obs_shape, name="obs")
-        self.prev_obs = np.zeros((1, self.env.observation_space.shape[0]))
-        self.prev_action = np.zeros((1, self.env.action_space.n))
+            dtype, shape=[None, 1, pms.obs_height, pms.obs_width], name="obs")
         self.action = action = tf.placeholder(tf.int64, shape=[None], name="action")
         self.advant = advant = tf.placeholder(dtype, shape=[None], name="advant")
         self.oldaction_dist = oldaction_dist = tf.placeholder(dtype, shape=[None, self.env.action_space.n],
@@ -45,6 +43,10 @@ class TRPOAgent(object):
 
         # Create neural network.
         action_dist_n, _ = (pt.wrap(self.obs).
+                            reshape((None, pms.obs_height, pms.obs_width, 1)).
+                            conv2d(4, 1).
+                            conv2d(4, 1).
+                            flatten().
                             fully_connected(64, activation_fn=tf.nn.tanh).
                             softmax_classifier(self.env.action_space.n))
         eps = 1e-6
@@ -85,22 +87,17 @@ class TRPOAgent(object):
         self.session.run(tf.initialize_all_variables())
         self.saver = tf.train.Saver(max_to_keep=10)
         self.writer = tf.train.SummaryWriter("log", self.session.graph)
-        self.load_model()
+        # self.load_model()
 
     def act(self, obs, *args):
         obs = np.expand_dims(obs, 0)
-        self.prev_obs = obs
-        obs_new = np.concatenate([obs, self.prev_obs, self.prev_action], 1)
-
-        action_dist_n = self.session.run(self.action_dist_n, {self.obs: obs_new})
+        action_dist_n = self.session.run(self.action_dist_n, {self.obs: obs})
 
         if self.train:
             action = int(cat_sample(action_dist_n)[0])
         else:
             action = int(np.argmax(action_dist_n))
-        self.prev_action *= 0.0
-        self.prev_action[0, action] = 1.0
-        return action, action_dist_n, np.squeeze(obs_new)
+        return action, action_dist_n, np.squeeze(obs)
 
     def learn(self):
         config = self.config

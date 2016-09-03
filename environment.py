@@ -24,8 +24,8 @@ class Environment(Env):
         self._observation = self.env.reset()
         return self.observation
 
-    def render(self):
-        self.env.render()
+    def render(self, mode="human"):
+        return self.env.render(mode)
 
     @property
     def observation(self):
