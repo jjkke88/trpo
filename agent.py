@@ -83,11 +83,11 @@ class TRPOAgent(object):
         self.fvp = flatgrad(gvp, var_list)
         self.gf = GetFlat(self.session, var_list)
         self.sff = SetFromFlat(self.session, var_list)
-        self.vf = VF(self.session)
+        self.vf = VF(self.session, type="rgb_array")
         self.session.run(tf.initialize_all_variables())
         self.saver = tf.train.Saver(max_to_keep=10)
         self.writer = tf.train.SummaryWriter("log", self.session.graph)
-        # self.load_model()
+        # self.load_model(pms.checkpoint_file)
 
     def act(self, obs, *args):
         obs = np.expand_dims(obs, 0)
@@ -104,7 +104,7 @@ class TRPOAgent(object):
         start_time = time.time()
         numeptotal = 0
         i = 0
-        while True:
+        for iteration in range(pms.max_iter_number):
             # Generating paths.
             print("Rollout")
             paths = self.storage.get_paths() # get_paths
@@ -155,9 +155,9 @@ class TRPOAgent(object):
                     return self.session.run(self.fvp, feed) + config.cg_damping * p
 
                 g = self.session.run(self.pg, feed_dict=feed)
-                # g_input = tf.placeholder(dtype="float32",shape=None,name="g")
-                # summary_g_op = tf.scalar_summary('g', g_input)
-                # self.writer.add_summary(self.session.run(summary_g_op, feed_dict={g_input:np.mean(g)}))
+                ep_num_input = tf.placeholder(dtype="float32",shape=None,name="ep_num")
+                summary_ep_op = tf.scalar_summary('g', ep_num_input)
+                self.writer.add_summary(self.session.run(summary_ep_op, feed_dict={ep_num_input:len(episoderewards)}))
                 stepdir = conjugate_gradient(fisher_vector_product, -g)
                 shs = .5 * stepdir.dot(fisher_vector_product(stepdir)) # theta
                 lm = np.sqrt(shs / config.max_kl)

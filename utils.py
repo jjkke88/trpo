@@ -3,6 +3,7 @@ import tensorflow as tf
 import random
 import scipy.signal
 import prettytensor as pt
+import parameters as pms
 
 seed = 1
 random.seed(seed)
@@ -56,12 +57,15 @@ class VF(object):
         self.type = type
 
     def create_net(self, shape):
-        print(shape)
-        self.x = tf.placeholder(tf.float32, shape=[None, shape], name="x")
+        self.x = tf.placeholder(tf.float32, shape=[None, shape[1], shape[2], shape[3]], name="x")
         self.y = tf.placeholder(tf.float32, shape=[None], name="y")
         self.net = (pt.wrap(self.x).
-                    fully_connected(64, activation_fn=tf.nn.relu).
-                    fully_connected(64, activation_fn=tf.nn.relu).
+                    reshape((None, pms.obs_height, pms.obs_width, 1)).
+                    conv2d(4, 1).
+                    conv2d(4, 1).
+                    flatten().
+                    fully_connected(32, activation_fn=tf.nn.relu).
+                    fully_connected(32, activation_fn=tf.nn.relu).
                     fully_connected(1))
         self.net = tf.reshape(self.net, (-1, ))
         l2 = (self.net - self.y) * (self.net - self.y)
@@ -77,7 +81,7 @@ class VF(object):
             al = np.arange(l).reshape(-1, 1) / 10.0
             # up to down stack obs, action_dst, al, np.ones((l,1))
             ret = np.concatenate([o, act, al, np.ones((l, 1))], axis=1)
-        elif self.type == "gray_image":
+        elif self.type == "rgb_array":
             ret = path["obs"].astype('float32')
         return ret
 
@@ -85,7 +89,7 @@ class VF(object):
     def fit(self, paths):
         featmat = np.concatenate([self._features(path) for path in paths])
         if self.net is None:
-            self.create_net(featmat.shape[1])
+            self.create_net(featmat.shape)
         returns = np.concatenate([path["returns"] for path in paths])
         for _ in range(50):
             self.session.run(self.train, {self.x: featmat, self.y: returns})

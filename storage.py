@@ -55,7 +55,7 @@ class Storage(object):
             for i in range(pms.history_number-index):
                 image_end.append(image)
         else:
-            image_end = self.obs_origin[index-pms.history_number+1:index+1]
+            image_end = self.obs_origin[index-pms.history_number:index]
 
         image_end = np.concatenate(image_end)
         # image_end = image_end.reshape((pms.obs_height, pms.obs_width, pms.history_number))
