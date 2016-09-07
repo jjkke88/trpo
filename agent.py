@@ -28,7 +28,8 @@ class TRPOAgent(object):
         print("Observation Space", env.observation_space)
         print("Action Space", env.action_space)
         print("Action area, high:%f, low%f"%(env.action_space.high, env.action_space.low))
-        self.session = tf.Session()
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1/3.0)
+        self.session = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
         self.end_count = 0
         self.paths = []
         self.train = True
@@ -38,24 +39,31 @@ class TRPOAgent(object):
     def init_network(self):
         self.obs = obs = tf.placeholder(
             dtype, shape=[None, pms.obs_shape], name="obs")
-        # Create neural network.
-        self.action_dist_n = action_dist_n = (pt.wrap(self.obs).
+        self.action_n = tf.placeholder(dtype, shape=[None, pms.action_shape], name="action")
+        # Create mean network.
+        self.action_dist_mean_n = (pt.wrap(self.obs).
                             fully_connected(64, activation_fn=tf.nn.relu).
-                            fully_connected(2*pms.action_shape))
-
+                            fully_connected(pms.action_shape))
+        # Create std network.
+        self.action_dist_std_n = action_dist_std_n = (pt.wrap(self.obs).
+                            fully_connected(64, activation_fn=tf.nn.relu).
+                            fully_connected(pms.action_shape))
+        self.action_dist_std_n = tf.clip_by_value(self.action_dist_std_n, 1e-6 ,100)
+        dist = tf.contrib.distributions.Normal(mu=self.action_dist_mean_n, sigma=self.action_dist_std_n)
+        self.action_dist_n = dist.pdf(self.action_n)
         self.N = N = tf.shape(obs)[0]
-        self.dist_mean = tf.slice(self.action_dist_n, [0, 0],[N, pms.action_shape])
-        self.dist_r = tf.slice(self.action_dist_n, [0, pms.action_shape],[N, pms.action_shape])
+        self.dist_mean = self.action_dist_n
+        var_list = tf.trainable_variables()
         self.advant = advant = tf.placeholder(dtype, shape=[None], name="advant")
-        self.oldaction_dist = oldaction_dist = tf.placeholder(dtype, shape=[None, 2*pms.action_shape],
+        self.oldaction_dist_n = oldaction_dist = tf.placeholder(dtype, shape=[None, pms.action_shape],
                                                               name="oldaction_dist")
-        self.old_dist_r = tf.slice(self.oldaction_dist, [0, pms.action_shape],[N, pms.action_shape])
+        self.old_dist_r = oldaction_dist
         eps = 1e-6
 
         # function slice_2d choose the probability of action, for action is int, slice is needed, for
         # continous condition, slice is unneeded.
-        self.p_n = p_n =1.0/(2.0*pms.PI*tf.exp(tf.reduce_sum(self.dist_r, 1)))
-        self.oldp_n = oldp_n = 1.0/(2.0*pms.PI*tf.exp(tf.reduce_sum(self.old_dist_r, 1)))
+        self.p_n = p_n = self.action_dist_n
+        self.oldp_n = oldp_n = self.oldaction_dist_n
         self.ratio_n = ratio_n = p_n / oldp_n
         Nf = tf.cast(N, dtype)
 
@@ -65,7 +73,7 @@ class TRPOAgent(object):
 
         self.losses = [surr, kl, ent]
 
-        var_list = tf.trainable_variables()
+
         # get g
         self.pg = flatgrad(surr, var_list)
         # get A
@@ -97,13 +105,9 @@ class TRPOAgent(object):
     def act(self, obs, *args):
         obs = np.expand_dims(obs, 0)
 
-        action_dist_n = self.session.run(self.action_dist_n, {self.obs: obs})
-
-        if self.train:
-            action = action_dist_n[0][0:pms.action_shape]
-        else:
-            action = action_dist_n[0][0:pms.action_shape]
-        # self.prev_action[0, action] = 1.0
+        action_dist_mean_n, action_dist_std_n = self.session.run([self.action_dist_mean_n, self.action_dist_std_n], {self.obs: obs})
+        action = np.clip(np.random.normal(loc=action_dist_mean_n[0], scale=action_dist_std_n[0], size=action_dist_mean_n[0].shape), pms.min_a, pms.max_a)
+        action_dist_n = self.session.run(self.action_dist_n, feed_dict={self.obs:obs, self.action_n:[action]})
         return action, action_dist_n, np.squeeze(obs)
 
     def learn(self):
@@ -139,7 +143,7 @@ class TRPOAgent(object):
 
             feed = {self.obs: obs_n,
                     self.advant: advant_n,
-                    self.oldaction_dist: action_dist_n}
+                    self.oldaction_dist_n: action_dist_n}
 
             episoderewards = np.array(
                 [path["rewards"].sum() for path in paths])
@@ -166,7 +170,7 @@ class TRPOAgent(object):
                 # self.writer.add_summary(self.session.run(summary_g_op, feed_dict={g_input:np.mean(g)}))
                 stepdir = conjugate_gradient(fisher_vector_product, -g)
                 shs = .5 * stepdir.dot(fisher_vector_product(stepdir)) # theta
-                lm = np.sqrt(shs / config.max_kl)
+                lm = np.sqrt(shs / pms.max_kl)
                 fullstep = stepdir / lm
                 neggdotstepdir = -g.dot(stepdir)
 
