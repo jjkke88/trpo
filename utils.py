@@ -3,6 +3,7 @@ import tensorflow as tf
 import random
 import scipy.signal
 import prettytensor as pt
+import parameters as pms
 
 seed = 1
 random.seed(seed)
@@ -46,54 +47,85 @@ def rollout(env, agent, max_pathlength, n_timesteps):
         timesteps_sofar += episode_steps
     return paths
 
-
 class VF(object):
-    coeffs = None
+    def __init__(self, env_spec, reg_coeff=1e-5):
+        self._coeffs = None
+        self._reg_coeff = reg_coeff
 
-    def __init__(self, session, type="origin"):
-        self.net = None
-        self.session = session
-        self.type = type
+    def get_param_values(self, **tags):
+        return self._coeffs
 
-    def create_net(self, shape):
-        self.x = tf.placeholder(tf.float32, shape=[None, shape], name="x")
-        self.y = tf.placeholder(tf.float32, shape=[None], name="y")
-        self.net = (pt.wrap(self.x).
-                    fully_connected(64, activation_fn=tf.nn.relu).
-                    fully_connected(64, activation_fn=tf.nn.relu).
-                    fully_connected(1))
-        self.net = tf.reshape(self.net, (-1, ))
-        l2 = (self.net - self.y) * (self.net - self.y)
-        self.train = tf.train.AdamOptimizer().minimize(l2)
-        self.session.run(tf.initialize_all_variables())
+    def set_param_values(self, val, **tags):
+        self._coeffs = val
 
     def _features(self, path):
-        if self.type == "origin":
-            o = path["obs"].astype('float32')
-            o = o.reshape(o.shape[0], -1)
-            act = path["action_dists"].astype('float32')
-            l = len(path["rewards"])
-            al = np.arange(l).reshape(-1, 1) / 10.0
-            # up to down stack obs, action_dst, al, np.ones((l,1))
-            ret = np.concatenate([o, act, al, np.ones((l, 1))], axis=1)
-        elif self.type == "gray_image":
-            ret = path["obs"].astype('float32')
-        return ret
+        o = np.clip(path["observations"], -10, 10)
+        l = len(path["rewards"])
+        al = np.arange(l).reshape(-1, 1) / 100.0
+        return np.concatenate([o, o ** 2, al, al ** 2, al ** 3, np.ones((l, 1))], axis=1)
 
     def fit(self, paths):
         featmat = np.concatenate([self._features(path) for path in paths])
-        if self.net is None:
-            self.create_net(featmat.shape[1])
         returns = np.concatenate([path["returns"] for path in paths])
-        for _ in range(50):
-            self.session.run(self.train, {self.x: featmat, self.y: returns})
+        self._coeffs = np.linalg.lstsq(
+            featmat.T.dot(featmat) + self._reg_coeff * np.identity(featmat.shape[1]),
+            featmat.T.dot(returns)
+        )[0]
 
     def predict(self, path):
-        if self.net is None:
-            return np.zeros(len(path["rewards"])) 
-        else:
-            ret = self.session.run(self.net, {self.x: self._features(path)})
-            return np.reshape(ret, (ret.shape[0], ))
+        if self._coeffs is None:
+            return np.zeros(len(path["rewards"]))
+        return self._features(path).dot(self._coeffs)
+
+
+# class VF(object):
+#     coeffs = None
+#
+#     def __init__(self, session, type="origin"):
+#         self.net = None
+#         self.session = session
+#         self.type = type
+#
+#     def create_net(self, shape):
+#         self.x = tf.placeholder(tf.float32, shape=[None, shape], name="x")
+#         self.y = tf.placeholder(tf.float32, shape=[None], name="y")
+#         self.net = (pt.wrap(self.x).
+#                     fully_connected(64, activation_fn=tf.nn.relu).
+#                     fully_connected(64, activation_fn=tf.nn.relu).
+#                     fully_connected(1))
+#         self.net = tf.reshape(self.net, (-1, ))
+#         l2 = (self.net - self.y) * (self.net - self.y)
+#         self.train = tf.train.AdamOptimizer().minimize(l2)
+#         self.session.run(tf.initialize_all_variables())
+#
+#     def _features(self, path):
+#         if self.type == "origin":
+#             o = path["obs"].astype('float32')
+#             o = o.reshape(o.shape[0], -1)
+#             act = path["action_dists"].astype('float32')
+#             l = len(path["rewards"])
+#             al = np.arange(l).reshape(-1, 1) / 10.0
+#             # up to down stack obs, action_dst, al, np.ones((l,1))
+#             ret = np.concatenate([o, act, al, np.ones((l, 1))], axis=1)
+#             # ret = np.concatenate([o], axis=1)
+#         elif self.type == "rgb_array":
+#             ret = path["obs"].astype('float32')
+#         return ret
+#
+#     def fit(self, paths):
+#         featmat = np.concatenate([self._features(path) for path in paths])
+#         if self.net is None:
+#             self.create_net(featmat.shape[1])
+#         returns = np.concatenate([path["returns"] for path in paths])
+#         for _ in range(50):
+#             self.session.run(self.train, {self.x: featmat, self.y: returns})
+#
+#     def predict(self, path):
+#         if self.net is None:
+#             return np.zeros(len(path["rewards"]))
+#         else:
+#             ret = self.session.run(self.net, {self.x: self._features(path)})
+#             return np.reshape(ret, (ret.shape[0], ))
 
 
 def cat_sample(prob_nk):
@@ -182,8 +214,10 @@ def linesearch(f, x, fullstep, expected_improve_rate):
         newfval = f(xnew)
         actual_improve = fval - newfval
         expected_improve = expected_improve_rate * stepfrac
-        ratio = actual_improve / expected_improve
-        if ratio > accept_ratio and actual_improve > 0:
+        # ratio = actual_improve / expected_improve
+        # if ratio > accept_ratio and actual_improve > 0:
+        #     return xnew
+        if actual_improve>0:
             return xnew
     return x
 
@@ -224,3 +258,44 @@ def countMatrixMultiply(matrix):
             result *= i
         result_end.append(result)
     return np.array(result_end)
+
+def kl_sym(old_dist_means, old_dist_logstds, new_dist_means, new_dist_logstds):
+    old_std = tf.exp(old_dist_logstds)
+    new_std = tf.exp(new_dist_logstds)
+    # means: (N*A)
+    # std: (N*A)
+    # formula:
+    # { (\mu_1 - \mu_2)^2 + \sigma_1^2 - \sigma_2^2 } / (2\sigma_2^2) +
+    # ln(\sigma_2/\sigma_1)
+    numerator = tf.square(old_dist_means - new_dist_means) + \
+                tf.square(old_std) - tf.square(new_std)
+    denominator = 2 * tf.square(new_std) + 1e-8
+    return tf.reduce_sum(
+        numerator / denominator + new_dist_logstds - old_dist_logstds)
+
+def kl_sym_gradient(old_dist_means, old_dist_logstds, new_dist_means, new_dist_logstds):
+    old_std = tf.exp(old_dist_logstds)
+    new_std = tf.exp(new_dist_logstds)
+    numerator = tf.square(tf.stop_gradient(new_dist_means) - new_dist_means) + \
+                tf.square(tf.stop_gradient(new_std)) - tf.square(new_std)
+
+
+    denominator = 2 * tf.square(new_std) + 1e-8
+    return tf.reduce_sum(
+        numerator / denominator + new_dist_logstds - tf.stop_gradient(new_dist_logstds))
+
+
+def log_likelihood_sym(x_var, dist_info_means, dist_info_logstds):
+    means = dist_info_means
+    log_stds = dist_info_logstds
+    zs = (x_var - means) / tf.exp(log_stds)
+    return - tf.reduce_sum(log_stds) - \
+           0.5 * tf.reduce_sum(tf.square(zs)) - \
+           0.5 * means.get_shape()[-1].value * np.log(2 * np.pi)
+
+def likelihood_ratio_sym(x_var, old_dist_means, old_dist_logstds, new_dist_means, new_dist_logstds):
+    logli_new = log_likelihood_sym(x_var, new_dist_means, new_dist_logstds)
+    logli_old = log_likelihood_sym(x_var, old_dist_means, old_dist_logstds)
+    return tf.exp(logli_new - logli_old)
+
+

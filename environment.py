@@ -18,7 +18,7 @@ class Environment(Env):
 
     def step(self, action, **kwargs):
         self._observation, reward, done, info = self.env.step(action)
-        return self.observation, reward, done, {}
+        return self.observation, reward, done, info
 
     def reset(self, **kwargs):
         self._observation = self.env.reset()
