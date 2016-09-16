@@ -33,6 +33,7 @@ class Storage(object):
             path_length = 0
             while path_length < pms.max_path_length:
                 a, agent_info = self.agent.get_action(o)
+
                 next_o, reward, terminal, env_info = self.env.step(a)
                 observations.append(o)
                 rewards.append(np.array([reward]))
@@ -46,6 +47,7 @@ class Storage(object):
                 o = next_o
                 if pms.render:
                     self.env.render()
+            np.save("datalog/action.npy", actions)
             paths.append(dict(
                 observations=np.array(observations),
                 actions=np.array(actions),
@@ -53,6 +55,7 @@ class Storage(object):
                 agent_infos=np.concatenate(agent_infos),
                 env_infos=np.concatenate(env_infos),
             ))
+
         return paths
 
     def process_paths(self, paths):

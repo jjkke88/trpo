@@ -1,5 +1,5 @@
 dims = (100, 100)
-timesteps_per_batch = 800
+timesteps_per_batch = 200
 max_path_length = 200
 max_kl = 0.01
 gae_lambda = 1
@@ -19,7 +19,8 @@ max_a = 2.0
 min_std = 1e-6
 center_adv = False
 positive_adv = False
-use_std_network = True
+use_std_network = False
+std = 1.0
 iter_num_per_train = 1
 checkpoint_file = "checkpoint/iter184.ckpt"
 environment_name = "Pendulum-v0"

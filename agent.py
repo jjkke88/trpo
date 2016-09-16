@@ -49,26 +49,29 @@ class TRPOAgent(object):
                                                  name="oldaction_dist_logstds")
 
         # Create mean network.
+        # self.fp_mean1, weight_fp_mean1, bias_fp_mean1 = linear(self.obs, 32, activation_fn=tf.nn.tanh, name="fp_mean1")
+        # self.fp_mean2, weight_fp_mean2, bias_fp_mean2 = linear(self.fp_mean1, 32, activation_fn=tf.nn.tanh, name="fp_mean2")
+        # self.action_dist_means_n, weight_action_dist_means_n, bias_action_dist_means_n = linear(self.fp_mean2, pms.action_shape, name="action_dist_means")
         self.action_dist_means_n = (pt.wrap(self.obs).
-                            fully_connected(32, activation_fn=tf.nn.tanh).
-                            fully_connected(32 , activation_fn=tf.nn.tanh).
-                            fully_connected(pms.action_shape))
+                                      fully_connected(8, activation_fn=tf.nn.tanh, init=tf.random_normal_initializer(stddev=1.0), bias=False).
+                                      fully_connected(8, activation_fn=tf.nn.tanh, init=tf.random_normal_initializer(stddev=1.0), bias=False).
+                                      fully_connected(pms.action_shape, init=tf.random_normal_initializer(stddev=1.0), bias=False))
+
+
         # Create std network.
         if pms.use_std_network:
-            self.action_dist_logstds_n = (pt.wrap(self.obs).
-                                fully_connected(32, activation_fn=tf.nn.tanh).
-                                fully_connected(32 , activation_fn=tf.nn.tanh).
-                                fully_connected(pms.action_shape))
+            self.fp_logstd1, weight_fp_logstd1, bias_fp_logstd1 = linear(self.obs, 32, activation_fn=tf.nn.tanh, name="fp_logstd1")
+            self.fp_logstd2, weight_fp_logstd2, bias_fp_logstd2 = linear(self.fp_logstd1, 32, activation_fn=tf.nn.tanh, name="fp_logstd2")
+            self.action_dist_logstds_n, weight_action_dist_logstds_n, bias_action_dist_logstds_n = linear(self.fp_logstd2, pms.action_shape, name="action_dist_means")
         else:
-            self.action_dist_logstds_n = [tf.Variable([0.01], trainable=False)]
-
+            self.action_dist_logstds_n = tf.placeholder(dtype, shape=[None, 1], name="logstd")
         if pms.min_std is not None:
             log_std_var = tf.maximum(self.action_dist_logstds_n, np.log(pms.min_std))
         self.action_dist_stds_n = tf.exp(log_std_var)
         self.distribution = DiagonalGaussian(pms.action_shape)
         self.N = tf.shape(obs)[0]
-
         Nf = tf.cast(self.N, dtype)
+
         self.old_dist_info_vars = dict(mean=self.old_dist_means_n, log_std=self.old_dist_logstds_n)
         self.new_dist_info_vars = dict(mean=self.action_dist_means_n, log_std=self.action_dist_logstds_n)
         self.ratio_n = self.distribution.likelihood_ratio_sym(self.action_n, self.new_dist_info_vars, self.old_dist_info_vars)
@@ -109,14 +112,17 @@ class TRPOAgent(object):
 
     def get_action(self, obs, *args):
         obs = np.expand_dims(obs, 0)
-        action_dist_means_n, action_dist_logstds_n = self.session.run([self.action_dist_means_n, self.action_dist_logstds_n], {self.obs: obs})
+        action_dist_logstd = np.expand_dims([np.log(pms.std)], 0)
+        action_dist_means_n = self.session.run(self.action_dist_means_n,
+                                                                      {self.obs: obs})
         if pms.train_flag:
             rnd = np.random.normal(size=action_dist_means_n[0].shape)
-            action = rnd * np.exp(action_dist_logstds_n[0]) + action_dist_means_n[0]
+            print rnd
+            action = rnd * np.exp(action_dist_logstd[0]) + action_dist_means_n[0]
         else:
             action = action_dist_means_n[0]
         # action = np.clip(action, pms.min_a, pms.max_a)
-        return action, dict(mean=action_dist_means_n, log_std=action_dist_logstds_n)
+        return action, dict(mean=action_dist_means_n[0], log_std=action_dist_logstd[0])
 
     def learn(self):
         start_time = time.time()
@@ -139,13 +145,14 @@ class TRPOAgent(object):
             obs_n = obs_n[inds]
             action_n = action_n[inds]
             advant_n = advant_n[inds]
-            action_dist_means_n = np.concatenate([agent_info["mean"] for agent_info in agent_infos[inds]])
-            action_dist_logstds_n = np.concatenate([agent_info["log_std"] for agent_info in agent_infos[inds]])
+            action_dist_means_n = np.array([agent_info["mean"] for agent_info in agent_infos[inds]])
+            action_dist_logstds_n = np.array([agent_info["log_std"] for agent_info in agent_infos[inds]])
             feed = {self.obs: obs_n,
                     self.advant: advant_n,
                     self.old_dist_means_n: action_dist_means_n,
                     self.old_dist_logstds_n: action_dist_logstds_n,
-                    self.action_n:action_n}
+                    self.action_n:action_n,
+                    self.action_dist_logstds_n:action_dist_logstds_n}
 
             episoderewards = np.array([path["rewards"].sum() for path in paths])
             average_episode_std = np.mean(np.exp(action_dist_logstds_n))
