@@ -11,50 +11,56 @@ class Storage(object):
 
     def get_paths(self):
         """
-        observations:obs list
-        actions:action list
-        rewards:reward list
-        agent_infos: mean+log_std dictlist
-        env_infos: no use, just information about environment
-        :return: a path
+        :param:observations:obs list
+        :param:actions:action list
+        :param:rewards:reward list
+        :param:agent_infos: mean+log_std dictlist
+        :param:env_infos: no use, just information about environment
+        :return: a path, list
         """
+        paths = []
         observations = []
         actions = []
         rewards = []
         agent_infos = []
         env_infos = []
         o = self.env.reset()
-        path_length = 0
+        path_sum_length = 0
         if pms.render:
             self.env.render()
-        while path_length < pms.max_path_length:
-            a, agent_info = self.agent.get_action(o)
-            next_o, r, d, env_info = self.env.step(a)
-            observations.append(o)
-            rewards.append(np.array([r]))
-            actions.append(a)
-            agent_infos.append([agent_info])
-            env_infos.append([env_info])
-            path_length += 1
-            if d:
-                break
-            o = next_o
-            if pms.render:
-                self.env.render()
-        return [dict(
-            observations=np.array(observations),
-            actions=np.array(actions),
-            rewards=np.array(rewards),
-            agent_infos=np.concatenate(agent_infos),
-            env_infos=np.concatenate(env_infos),
-        )]
+        while path_sum_length<pms.timesteps_per_batch:
+            o = self.env.reset()
+            path_length = 0
+            while path_length < pms.max_path_length:
+                a, agent_info = self.agent.get_action(o)
+                next_o, reward, terminal, env_info = self.env.step(a)
+                observations.append(o)
+                rewards.append(np.array([reward]))
+                actions.append(a)
+                agent_infos.append([agent_info])
+                env_infos.append([env_info])
+                path_length += 1
+                path_sum_length += 1
+                if terminal:
+                    break
+                o = next_o
+                if pms.render:
+                    self.env.render()
+            paths.append(dict(
+                observations=np.array(observations),
+                actions=np.array(actions),
+                rewards=np.array(rewards),
+                agent_infos=np.concatenate(agent_infos),
+                env_infos=np.concatenate(env_infos),
+            ))
+        return paths
 
     def process_paths(self, paths):
         baselines = []
         returns = []
         for path in paths:
             path_baselines = np.append(self.baseline.predict(path), 0)
-            deltas = path["rewards"] + \
+            deltas = np.concatenate(path["rewards"]) + \
                      pms.discount * path_baselines[1:] - \
                      path_baselines[:-1]
             path["advantages"] = discount(
@@ -76,10 +82,10 @@ class Storage(object):
         if pms.positive_adv:
             advantages = (advantages - np.min(advantages)) + 1e-8
 
-        average_discounted_return = \
-            np.mean([path["returns"][0] for path in paths])
-
-        undiscounted_returns = [sum(path["rewards"]) for path in paths]
+        # average_discounted_return = \
+        #     np.mean([path["returns"][0] for path in paths])
+        #
+        # undiscounted_returns = [sum(path["rewards"]) for path in paths]
 
         # ent = np.mean(self.policy.distribution.entropy(agent_infos))
 

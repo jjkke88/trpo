@@ -30,9 +30,9 @@ class DiagonalGaussian(object):
                     tf.square(old_std) - tf.square(new_std)
         denominator = 2 * tf.square(new_std) + 1e-8
         return tf.reduce_sum(
-            numerator / denominator + new_log_stds - old_log_stds)
+            numerator / denominator + new_log_stds - old_log_stds, -1)
 
-    def likelihood_ratio_sym(self, x_var, old_dist_info_vars, new_dist_info_vars):
+    def likelihood_ratio_sym(self, x_var, new_dist_info_vars, old_dist_info_vars):
         logli_new = self.log_likelihood_sym(x_var, new_dist_info_vars)
         logli_old = self.log_likelihood_sym(x_var, old_dist_info_vars)
         return tf.exp(logli_new - logli_old)
@@ -41,8 +41,8 @@ class DiagonalGaussian(object):
         means = dist_info_vars["mean"]
         log_stds = dist_info_vars["log_std"]
         zs = (x_var - means) / tf.exp(log_stds)
-        return - tf.reduce_sum(log_stds) - \
-               0.5 * tf.reduce_sum(tf.square(zs)) - \
+        return - tf.reduce_sum(log_stds, -1) - \
+               0.5 * tf.reduce_sum(tf.square(zs), -1) - \
                0.5 *means.get_shape()[-1].value * np.log(2 * np.pi)
 
     def sample(self, dist_info):

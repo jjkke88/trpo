@@ -16,68 +16,6 @@ def discount(x, gamma):
     assert x.ndim >= 1
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
-def rollout(env, agent, max_pathlength, n_timesteps):
-    paths = []
-    timesteps_sofar = 0
-    while timesteps_sofar < n_timesteps:
-        obs, actions, rewards, action_dists = [], [], [], []
-        ob = env.reset()
-        agent.prev_action *= 0.0
-        agent.prev_obs *= 0.0
-        episode_steps = 0
-        for _ in xrange(max_pathlength):
-            action, action_dist, ob = agent.act(ob)
-            obs.append(ob)
-            actions.append(action)
-            action_dists.append(action_dist)
-            res = env.step(action)
-            env.render()
-            ob = res[0]
-            rewards.append(res[1])
-            episode_steps += 1
-            if res[2]:
-                break
-        path = {"obs": np.concatenate(np.expand_dims(obs, 0)),
-                "action_dists": np.concatenate(action_dists),
-                "rewards": np.array(rewards),
-                "actions": np.array(actions)}
-        paths.append(path)
-        agent.prev_action *= 0.0
-        agent.prev_obs *= 0.0
-        timesteps_sofar += episode_steps
-    return paths
-
-class VF(object):
-    def __init__(self, env_spec, reg_coeff=1e-5):
-        self._coeffs = None
-        self._reg_coeff = reg_coeff
-
-    def get_param_values(self, **tags):
-        return self._coeffs
-
-    def set_param_values(self, val, **tags):
-        self._coeffs = val
-
-    def _features(self, path):
-        o = np.clip(path["observations"], -10, 10)
-        l = len(path["rewards"])
-        al = np.arange(l).reshape(-1, 1) / 100.0
-        return np.concatenate([o, o ** 2, al, al ** 2, al ** 3, np.ones((l, 1))], axis=1)
-
-    def fit(self, paths):
-        featmat = np.concatenate([self._features(path) for path in paths])
-        returns = np.concatenate([path["returns"] for path in paths])
-        self._coeffs = np.linalg.lstsq(
-            featmat.T.dot(featmat) + self._reg_coeff * np.identity(featmat.shape[1]),
-            featmat.T.dot(returns)
-        )[0]
-
-    def predict(self, path):
-        if self._coeffs is None:
-            return np.zeros(len(path["rewards"]))
-        return self._features(path).dot(self._coeffs)
-
-
 # class VF(object):
 #     coeffs = None
 #
@@ -208,16 +146,16 @@ def slice_2d(x, inds0, inds1):
 def linesearch(f, x, fullstep, expected_improve_rate):
     accept_ratio = .1
     max_backtracks = 10
-    fval = f(x)
+    fval, old_kl = f(x)
     for (_n_backtracks, stepfrac) in enumerate(.5**np.arange(max_backtracks)):
-        xnew = x + stepfrac * fullstep
-        newfval = f(xnew)
-        actual_improve = fval - newfval
-        expected_improve = expected_improve_rate * stepfrac
+        xnew = x - stepfrac * fullstep
+        newfval, new_kl = f(xnew)
+        # actual_improve = newfval - fval # minimize target object
+        # expected_improve = expected_improve_rate * stepfrac
         # ratio = actual_improve / expected_improve
         # if ratio > accept_ratio and actual_improve > 0:
         #     return xnew
-        if actual_improve>0:
+        if newfval<fval and new_kl<=pms.max_kl:
             return xnew
     return x
 

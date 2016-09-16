@@ -1,4 +1,5 @@
 import numpy as np
+import tensorflow as tf
 
 EPS = np.finfo('float64').tiny
 
@@ -217,6 +218,18 @@ def test_lanczos():
     Q, H1 = lanczos2(f_Ax_noisy, b, 10)
     print np.linalg.eigvalsh(H1)
 
+def compute_hessian(fn, vars):
+    mat = []
+    for v1 in vars:
+        temp = []
+        for v2 in vars:
+            # computing derivative twice, first w.r.t v2 and then w.r.t v1
+            temp.append(tf.gradients(tf.gradients(fn, v2)[0], v1)[0])
+        temp = [tf.cons(0) if t == None else t for t in temp] # tensorflow returns None when there is no gradient, so we replace None with 0
+        temp = tf.pack(temp)
+        mat.append(temp)
+    mat = tf.pack(mat)
+    return mat
 
 if __name__ == "__main__":
     test_lanczos()

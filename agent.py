@@ -47,46 +47,49 @@ class TRPOAgent(object):
                                                name="oldaction_dist_means")
         self.old_dist_logstds_n = tf.placeholder(dtype, shape=[None, pms.action_shape],
                                                  name="oldaction_dist_logstds")
+
         # Create mean network.
         self.action_dist_means_n = (pt.wrap(self.obs).
-                            fully_connected(64, activation_fn=tf.nn.tanh).
+                            fully_connected(32, activation_fn=tf.nn.tanh).
+                            fully_connected(32 , activation_fn=tf.nn.tanh).
                             fully_connected(pms.action_shape))
         # Create std network.
         if pms.use_std_network:
             self.action_dist_logstds_n = (pt.wrap(self.obs).
-                                fully_connected(64, activation_fn=tf.nn.tanh).
+                                fully_connected(32, activation_fn=tf.nn.tanh).
+                                fully_connected(32 , activation_fn=tf.nn.tanh).
                                 fully_connected(pms.action_shape))
         else:
-            self.action_dist_logstds_n = tf.Variable([0.01], trainable=False)
-        self.action_dist_stds_n = tf.exp(self.action_dist_logstds_n)
+            self.action_dist_logstds_n = [tf.Variable([0.01], trainable=False)]
 
+        if pms.min_std is not None:
+            log_std_var = tf.maximum(self.action_dist_logstds_n, np.log(pms.min_std))
+        self.action_dist_stds_n = tf.exp(log_std_var)
         self.distribution = DiagonalGaussian(pms.action_shape)
-
         self.N = tf.shape(obs)[0]
 
-        var_list = tf.trainable_variables()
-
-        eps = 1e-6
-
-        # function slice_2d choose the probability of action, for action is int, slice is needed, for
-        # continous condition, slice is unneeded.
         Nf = tf.cast(self.N, dtype)
         self.old_dist_info_vars = dict(mean=self.old_dist_means_n, log_std=self.old_dist_logstds_n)
         self.new_dist_info_vars = dict(mean=self.action_dist_means_n, log_std=self.action_dist_logstds_n)
-        self.ratio_n = self.distribution.likelihood_ratio_sym(self.action_n, self.old_dist_info_vars, self.new_dist_info_vars)
-        surr = -tf.reduce_mean(self.ratio_n * advant)  # Surrogate loss
-        kl = self.distribution.kl_sym(self.old_dist_info_vars, self.new_dist_info_vars)/ Nf
-        # ent = tf.reduce_sum(-p_n * tf.log(p_n + eps)) / Nf
+        self.ratio_n = self.distribution.likelihood_ratio_sym(self.action_n, self.new_dist_info_vars, self.old_dist_info_vars)
 
+        surr = -tf.reduce_mean(self.ratio_n * advant)  # Surrogate loss
+        kl = tf.reduce_mean(self.distribution.kl_sym(self.old_dist_info_vars, self.new_dist_info_vars))
+        # ent = tf.reduce_sum(-p_n * tf.log(p_n + eps)) / Nf
         self.losses = [surr, kl]
 
+        var_list = tf.trainable_variables()
+        self.gf = GetFlat(self.session , var_list)  # get theta from var_list
+        self.sff = SetFromFlat(self.session , var_list)  # set theta from var_List
         # get g
         self.pg = flatgrad(surr, var_list)
         # get A
+
         # KL divergence where first arg is fixed
         # replace old->tf.stop_gradient from previous kl
-        kl_firstfixed = kl_sym_gradient(self.old_dist_means_n, self.old_dist_logstds_n, self.action_dist_means_n, self.action_dist_logstds_n)/ Nf
-        grads = tf.gradients(kl_firstfixed, var_list)
+        kl_firstfixed = kl_sym_gradient(self.old_dist_means_n, self.old_dist_logstds_n, self.action_dist_means_n, self.action_dist_logstds_n)
+
+        grads = tf.gradients(kl, var_list)
         self.flat_tangent = tf.placeholder(dtype, shape=[None])
         shapes = map(var_shape, var_list)
         start = 0
@@ -96,11 +99,9 @@ class TRPOAgent(object):
             param = tf.reshape(self.flat_tangent[start:(start + size)], shape)
             tangents.append(param)
             start += size
-        gvp = [tf.reduce_sum(g * t) for (g, t) in zip(grads, tangents)]
-        self.fvp = flatgrad(gvp, var_list) # get kl''*p
+        self.gvp = [tf.reduce_sum(g * t) for (g, t) in zip(grads, tangents)]
+        self.fvp =flatgrad(tf.reduce_sum(self.gvp), var_list) # get kl''*p
 
-        self.gf = GetFlat(self.session, var_list) # get theta from var_list
-        self.sff = SetFromFlat(self.session, var_list) # set theta from var_List
         self.session.run(tf.initialize_all_variables())
         self.saver = tf.train.Saver(max_to_keep=10)
         self.writer = tf.train.SummaryWriter("log", self.session.graph)
@@ -109,17 +110,15 @@ class TRPOAgent(object):
     def get_action(self, obs, *args):
         obs = np.expand_dims(obs, 0)
         action_dist_means_n, action_dist_logstds_n = self.session.run([self.action_dist_means_n, self.action_dist_logstds_n], {self.obs: obs})
-
         if pms.train_flag:
             rnd = np.random.normal(size=action_dist_means_n[0].shape)
             action = rnd * np.exp(action_dist_logstds_n[0]) + action_dist_means_n[0]
         else:
             action = action_dist_means_n[0]
-        action = np.clip(action, pms.min_a, pms.max_a)
+        # action = np.clip(action, pms.min_a, pms.max_a)
         return action, dict(mean=action_dist_means_n, log_std=action_dist_logstds_n)
 
     def learn(self):
-        config = self.config
         start_time = time.time()
         numeptotal = 0
         i = 0
@@ -128,82 +127,77 @@ class TRPOAgent(object):
             print("Rollout")
             paths = self.storage.get_paths() # get_paths
             # Computing returns and estimating advantage function.
-            paths = self.storage.process_paths(paths)
+            sample_data = self.storage.process_paths(paths)
 
-            agent_infos = np.concatenate([path["agent_infos"] for path in paths])
-            obs_n = np.concatenate([path["observations"] for path in paths])
-            action_n = np.concatenate([path["actions"] for path in paths])
-            advant_n = np.concatenate([path["advantages"] for path in paths])
+            agent_infos = sample_data["agent_infos"]
+            obs_n = sample_data["observations"]
+            action_n = sample_data["actions"]
+            advant_n = sample_data["advantages"]
 
             n_samples = len(obs_n)
-            inds = np.random.choice(
-                n_samples, n_samples * pms.subsample_factor, replace=False)
+            inds = np.random.choice(n_samples, n_samples * pms.subsample_factor, replace=False)
             obs_n = obs_n[inds]
             action_n = action_n[inds]
             advant_n = advant_n[inds]
-            action_dist_means_n = agent_infos[inds]["mean"]
-            action_dist_logstds_n = agent_infos[inds]["log_std"]
+            action_dist_means_n = np.concatenate([agent_info["mean"] for agent_info in agent_infos[inds]])
+            action_dist_logstds_n = np.concatenate([agent_info["log_std"] for agent_info in agent_infos[inds]])
             feed = {self.obs: obs_n,
                     self.advant: advant_n,
                     self.old_dist_means_n: action_dist_means_n,
                     self.old_dist_logstds_n: action_dist_logstds_n,
                     self.action_n:action_n}
 
-            episoderewards = np.array(
-                [path["rewards"].sum() for path in paths])
+            episoderewards = np.array([path["rewards"].sum() for path in paths])
+            average_episode_std = np.mean(np.exp(action_dist_logstds_n))
 
             print "\n********** Iteration %i ************" % i
-            if not self.train:
-                print("Episode mean: %f" % episoderewards.mean())
-                self.end_count += 1
-                if self.end_count > 100:
-                    break
-            if self.train:
-                # self.vf.fit(paths)
-                thprev = self.gf() # get theta_old
+            for iter_num_per_train in range(pms.iter_num_per_train):
+                # if not self.train:
+                #     print("Episode mean: %f" % episoderewards.mean())
+                #     self.end_count += 1
+                #     if self.end_count > 100:
+                #         break
+                if self.train:
+                    thprev = self.gf() # get theta_old
+                    def fisher_vector_product(p):
+                        feed[self.flat_tangent] = p
+                        return self.session.run(self.fvp, feed) + pms.cg_damping * p
 
-                def fisher_vector_product(p):
-                    feed[self.flat_tangent] = p
-                    return self.session.run(self.fvp, feed) + config.cg_damping * p
+                    g = self.session.run(self.pg, feed_dict=feed)
+                    stepdir = krylov.cg(fisher_vector_product, g, cg_iters=pms.cg_iters)
+                    shs = 0.5 * stepdir.dot(fisher_vector_product(stepdir)) # theta
+                    fullstep = stepdir * np.sqrt(2.0*pms.max_kl / shs)
+                    neggdotstepdir = -g.dot(stepdir)
 
-                g = self.session.run(self.pg, feed_dict=feed)
-                # g_input = tf.placeholder(dtype="float32",shape=None,name="g")
-                # summary_g_op = tf.scalar_summary('g', g_input)
-                # self.writer.add_summary(self.session.run(summary_g_op, feed_dict={g_input:np.mean(g)}))
-                stepdir = krylov.cg(fisher_vector_product, g, cg_iters=pms.cg_iters)
-                shs = .5 * stepdir.dot(fisher_vector_product(stepdir)) # theta
-                lm = np.sqrt(shs / pms.max_kl)
-                fullstep = stepdir / lm
-                neggdotstepdir = -g.dot(stepdir)
+                    def loss(th):
+                        self.sff(th)
+                        return self.session.run(self.losses, feed_dict=feed)
+                    surr_prev, kl_prev = loss(thprev)
+                    theta = linesearch(loss, thprev, fullstep, neggdotstepdir)
+                    self.sff(theta)
 
-                def loss(th):
-                    self.sff(th)
-                    return self.session.run(self.losses[0], feed_dict=feed)
-                theta = linesearch(loss, thprev, fullstep, neggdotstepdir / lm)
-                self.sff(theta)
+                    surrafter, kloldnew = self.session.run(self.losses, feed_dict=feed)
 
-                surrafter, kloldnew = self.session.run(self.losses, feed_dict=feed)
-                if kloldnew > 2.0 * pms.max_kl:
-                    self.sff(thprev)
+                    stats = {}
 
-                stats = {}
-
-                numeptotal += len(episoderewards)
-                stats["Total number of episodes"] = numeptotal
-                stats["Average sum of rewards per episode"] = episoderewards.mean()
-                # stats["Entropy"] = entropy
-                # exp = explained_variance(np.array(baseline_n), np.array(returns_n))
-                # stats["Baseline explained"] = exp
-                stats["Time elapsed"] = "%.2f mins" % ((time.time() - start_time) / 60.0)
-                stats["KL between old and new distribution"] = kloldnew
-                stats["Surrogate loss"] = surrafter
-                for k, v in stats.iteritems():
-                    print(k + ": " + " " * (40 - len(k)) + str(v))
-                # if entropy != entropy:
-                #     exit(-1)
-                # if exp > 0.95:
-                #     self.train = False
-                self.save_model("iter"+str(i))
+                    numeptotal += len(episoderewards)
+                    stats["average_episode_std"] = average_episode_std
+                    stats["Total number of episodes"] = numeptotal
+                    stats["Average sum of rewards per episode"] = episoderewards.mean()
+                    # stats["Entropy"] = entropy
+                    # exp = explained_variance(np.array(baseline_n), np.array(returns_n))
+                    # stats["Baseline explained"] = exp
+                    stats["Time elapsed"] = "%.2f mins" % ((time.time() - start_time) / 60.0)
+                    stats["KL between old and new distribution"] = kloldnew
+                    stats["Surrogate loss"] = surrafter
+                    stats["Surrogate loss prev"] = surr_prev
+                    for k, v in stats.iteritems():
+                        print(k + ": " + " " * (40 - len(k)) + str(v))
+                    # if entropy != entropy:
+                    #     exit(-1)
+                    # if exp > 0.95:
+                    #     self.train = False
+            self.save_model("iter"+str(i))
             i += 1
 
     def test(self, model_name):
