@@ -8,8 +8,15 @@ from gym.spaces import Discrete, Box, Tuple
 from gym import Env
 import cv2
 import parameters as pms
+import gym
 
-
+def convert_gym_space(space):
+    if isinstance(space, gym.spaces.Box):
+        return Box(low=space.low, high=space.high)
+    elif isinstance(space, gym.spaces.Discrete):
+        return Discrete(n=space.n)
+    else:
+        raise NotImplementedError
 class Environment(Env):
 
     def __init__(self, env, type="origin"):
@@ -36,13 +43,13 @@ class Environment(Env):
 
     @property
     def action_space(self):
-        return self.env.action_space
+        return convert_gym_space(self.env.action_space)
 
 
     @property
     def observation_space(self):
         if self.type == "origin":
-            return self.env.observation_space
+            return convert_gym_space(self.env.observation_space)
         else:
             return pms.dims
 

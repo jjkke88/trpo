@@ -4,6 +4,7 @@ import random
 import scipy.signal
 import prettytensor as pt
 import parameters as pms
+import threading
 from tensorflow.contrib.layers.python.layers import initializers
 
 seed = 1
@@ -66,6 +67,50 @@ def discount(x, gamma):
 #             ret = self.session.run(self.net, {self.x: self._features(path)})
 #             return np.reshape(ret, (ret.shape[0], ))
 
+def rollout(env, agent, paths):
+    """
+        :param:observations:obs list
+        :param:actions:action list
+        :param:rewards:reward list
+        :param:agent_infos: mean+log_std dictlist
+        :param:env_infos: no use, just information about environment
+        :return: a path, list
+        """
+    paths = []
+    observations = []
+    actions = []
+    rewards = []
+    agent_infos = []
+    env_infos = []
+    o = env.reset()
+    path_sum_length = 0
+    if pms.render:
+        env.render()
+    o = env.reset()
+    path_length = 0
+    while path_length < pms.max_path_length:
+        a , agent_info = agent.get_action(o)
+        next_o , reward , terminal , env_info = env.step(a)
+        observations.append(o)
+        rewards.append(np.array([reward]))
+        actions.append(a)
+        agent_infos.append([agent_info])
+        env_infos.append([env_info])
+        path_length += 1
+        path_sum_length += 1
+        if terminal:
+            break
+        o = next_o
+        if pms.render:
+            env.render()
+    np.save("datalog/action.npy" , actions)
+    paths.append(dict(
+        observations=np.array(observations) ,
+        actions=np.array(actions) ,
+        rewards=np.array(rewards) ,
+        agent_infos=np.concatenate(agent_infos) ,
+        env_infos=np.concatenate(env_infos) ,
+    ))
 
 def cat_sample(prob_nk):
     assert prob_nk.ndim == 2
@@ -147,7 +192,7 @@ def linesearch(f, x, fullstep, expected_improve_rate):
     accept_ratio = .1
     max_backtracks = 10
     fval, old_kl = f(x)
-    for (_n_backtracks, stepfrac) in enumerate(.5**np.arange(max_backtracks)):
+    for (_n_backtracks, stepfrac) in enumerate(.3**np.arange(max_backtracks)):
         xnew = x - stepfrac * fullstep
         newfval, new_kl = f(xnew)
         # actual_improve = newfval - fval # minimize target object

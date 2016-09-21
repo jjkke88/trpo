@@ -2,7 +2,7 @@ import numpy as np
 
 
 class Baseline(object):
-    def __init__(self, reg_coeff=1e-5):
+    def __init__(self, reg_coeff=1e-5, session=None):
         self._coeffs = None
         self._reg_coeff = reg_coeff
 

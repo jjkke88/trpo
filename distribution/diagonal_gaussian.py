@@ -33,11 +33,24 @@ class DiagonalGaussian(object):
             numerator / denominator + new_log_stds - old_log_stds, -1)
 
     def likelihood_ratio_sym(self, x_var, new_dist_info_vars, old_dist_info_vars):
+        """
+        \frac{\pi_\theta}{\pi_{old}}
+        :param x_var: actions
+        :param new_dist_info_vars: means + logstds
+        :param old_dist_info_vars: old_means + old_logstds
+        :return:
+        """
         logli_new = self.log_likelihood_sym(x_var, new_dist_info_vars)
         logli_old = self.log_likelihood_sym(x_var, old_dist_info_vars)
         return tf.exp(logli_new - logli_old)
 
     def log_likelihood_sym(self, x_var, dist_info_vars):
+        """
+        \frac{1}{(2\pi)^{\frac{n}{2}}\sigma_\theta}exp(-(\frac{a-\mu_{\pi_\theta}}{2\sigma_\theta})^2)
+        :param x_var:
+        :param dist_info_vars:
+        :return:
+        """
         means = dist_info_vars["mean"]
         log_stds = dist_info_vars["log_std"]
         zs = (x_var - means) / tf.exp(log_stds)
@@ -59,8 +72,8 @@ class DiagonalGaussian(object):
                0.5 * np.sum(np.square(zs), axis=-1) - \
                0.5 * means.shape[-1] * np.log(2 * np.pi)
 
-    def entropy(self, dist_info):
-        log_stds = dist_info["log_std"]
+    def entropy(self, dist_infos):
+        log_stds = [dist_info["log_std"] for dist_info in dist_infos]
         return np.sum(log_stds + np.log(np.sqrt(2 * np.pi * np.e)), axis=-1)
 
     @property

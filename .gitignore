@@ -3,3 +3,4 @@ logs_*
 *.swp
 checkpoint/
 log/
+datalog
