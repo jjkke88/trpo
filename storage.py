@@ -82,8 +82,9 @@ class Storage(object):
         if pms.center_adv:
             advantages = (advantages - np.mean(advantages)) / (advantages.std() + 1e-8)
 
-        if pms.positive_adv:
-            advantages = (advantages - np.min(advantages)) + 1e-8
+        # for some unknown reaseon, it can not be used
+        # if pms.positive_adv:
+        #     advantages = (advantages - np.min(advantages)) + 1e-8
 
         # average_discounted_return = \
         #     np.mean([path["returns"][0] for path in paths])

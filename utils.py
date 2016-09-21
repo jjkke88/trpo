@@ -205,24 +205,6 @@ def linesearch(f, x, fullstep, expected_improve_rate):
     return x
 
 
-def conjugate_gradient(f_Ax, b, cg_iters=10, residual_tol=1e-10):
-    p = b.copy()
-    r = b.copy()
-    x = np.zeros_like(b)
-    rdotr = r.dot(r)
-    for i in xrange(cg_iters):
-        z = f_Ax(p)
-        v = rdotr / p.dot(z)
-        x += v * p
-        r -= v * z
-        newrdotr = r.dot(r)
-        mu = newrdotr / rdotr
-        p = r + mu * p
-        rdotr = newrdotr
-        if rdotr < residual_tol:
-            break
-    return x
-
 class dict2(dict):
     def __init__(self, **kwargs):
         dict.__init__(self, kwargs)
@@ -267,61 +249,3 @@ def kl_sym_gradient(old_dist_means, old_dist_logstds, new_dist_means, new_dist_l
     return tf.reduce_sum(
         numerator / denominator + new_dist_logstds - tf.stop_gradient(new_dist_logstds))
 
-
-def log_likelihood_sym(x_var, dist_info_means, dist_info_logstds):
-    means = dist_info_means
-    log_stds = dist_info_logstds
-    zs = (x_var - means) / tf.exp(log_stds)
-    return - tf.reduce_sum(log_stds) - \
-           0.5 * tf.reduce_sum(tf.square(zs)) - \
-           0.5 * means.get_shape()[-1].value * np.log(2 * np.pi)
-
-def likelihood_ratio_sym(x_var, old_dist_means, old_dist_logstds, new_dist_means, new_dist_logstds):
-    logli_new = log_likelihood_sym(x_var, new_dist_means, new_dist_logstds)
-    logli_old = log_likelihood_sym(x_var, old_dist_means, old_dist_logstds)
-    return tf.exp(logli_new - logli_old)
-
-
-
-def conv2d(x,
-        output_dim,
-        kernel_size,
-        stride,
-        initializer=tf.contrib.layers.xavier_initializer(),
-        activation_fn=tf.nn.relu,
-        data_format='NHWC',
-        padding='VALID',
-        name='conv2d'):
-    with tf.variable_scope(name):
-        if data_format == 'NCHW':
-            stride = [1, 1, stride[0], stride[1]]
-            kernel_shape = [kernel_size[0], kernel_size[1], x.get_shape()[1], output_dim]
-        elif data_format == 'NHWC':
-            stride = [1, stride[0], stride[1], 1]
-            kernel_shape = [kernel_size[0], kernel_size[1], x.get_shape()[-1], output_dim]
-
-        w = tf.get_variable('w', kernel_shape, tf.float32, initializer=initializer)
-        conv = tf.nn.conv2d(x, w, stride, padding, data_format=data_format)
-
-        b = tf.get_variable('biases', [output_dim], initializer=tf.constant_initializer(0.0))
-        out = tf.nn.bias_add(conv, b, data_format)
-
-        if activation_fn != None:
-            out = activation_fn(out)
-
-    return out, w, b
-
-def linear(input_, output_size, stddev=0.02, bias_start=0.0, activation_fn=None, name='linear'):
-    shape = input_.get_shape().as_list()
-    with tf.variable_scope(name):
-        w = tf.get_variable('Matrix', [shape[1], output_size], tf.float32,
-            tf.random_normal_initializer(stddev=stddev))
-        b = tf.get_variable('bias', [output_size],
-            initializer=tf.constant_initializer(bias_start))
-
-        out = tf.nn.bias_add(tf.matmul(input_, w), b)
-
-        if activation_fn != None:
-            return activation_fn(out), w, b
-        else:
-            return out, w, b

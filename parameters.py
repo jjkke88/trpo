@@ -10,8 +10,8 @@ discount = 0.99
 cg_iters = 10
 deviation = 0.1
 PI = 3.1415926
-render = True
-train_flag = False
+render = False
+train_flag =True<li
 # dims of observation, also is the input dims of action network
 obs_shape = 3
 action_shape = 1

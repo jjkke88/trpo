@@ -3,7 +3,6 @@ import logging
 import gym
 from gym import envs, scoreboard
 from gym.spaces import Discrete, Box
-from space_conversion import SpaceConversionEnv
 import tempfile
 import sys
 from environment import Environment
