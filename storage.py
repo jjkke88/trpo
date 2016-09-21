@@ -19,6 +19,9 @@ class Storage(object):
         :param:env_infos: no use, just information about environment
         :return: a path, list
         """
+        # if pms.record_movie:
+        #     outdir = 'log/trpo'
+        #     self.env.monitor.start(outdir , force=True)
         observations = []
         actions = []
         rewards = []

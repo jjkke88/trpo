@@ -11,7 +11,7 @@ cg_iters = 10
 deviation = 0.1
 PI = 3.1415926
 render = False
-train_flag =True<li
+train_flag = True
 # dims of observation, also is the input dims of action network
 obs_shape = 3
 action_shape = 1
@@ -25,3 +25,4 @@ std = 1.1
 iter_num_per_train = 1
 checkpoint_file = "checkpoint/iter1168.ckpt"
 environment_name = "Pendulum-v0"
+record_movie = False
