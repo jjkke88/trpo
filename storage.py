@@ -11,41 +11,74 @@ class Storage(object):
         self.obs = []
         self.obs_origin = []
 
-    def get_paths(self):
-        paths = []
-        timesteps_sofar = 0
-        while timesteps_sofar < pms.timesteps_per_batch:
-            self.obs_origin, self.obs, actions, rewards, action_dists = [], [], [], [], []
-            ob = self.env.reset()
+    def get_single_path(self):
+        self.obs_origin, self.obs, actions, rewards, action_dists = [], [], [], [], []
+        ob = self.env.reset()
+        ob = self.env.render('rgb_array')
+        # self.agent.prev_action *= 0.0
+        # self.agent.prev_obs *= 0.0
+        episode_steps = 0
+        for _ in xrange(pms.max_pathlength):
+            self.obs_origin.append(ob)
+            deal_ob = self.deal_image(ob)
+            action, action_dist, ob = self.agent.act(deal_ob)
+            self.obs.append(deal_ob)
+            actions.append(action)
+            action_dists.append(action_dist)
+            res = self.env.step(action) # res
+            if pms.render:
+                self.env.render()
+            ob = res[0]
             ob = self.env.render('rgb_array')
-            # self.agent.prev_action *= 0.0
-            # self.agent.prev_obs *= 0.0
-            episode_steps = 0
-            for _ in xrange(pms.max_pathlength):
-                self.obs_origin.append(ob)
-                deal_ob = self.deal_image(ob)
-                action, action_dist, ob = self.agent.act(deal_ob)
-                self.obs.append(deal_ob)
-                actions.append(action)
-                action_dists.append(action_dist)
-                res = self.env.step(action) # res
-                if pms.render:
-                    self.env.render()
-                ob = res[0]
-                ob = self.env.render('rgb_array')
-                rewards.append(res[1])
-                episode_steps += 1
-                if res[2]:
-                    break
-            path = {"obs": np.concatenate(np.expand_dims(self.obs, 0)),
-                    "action_dists": np.concatenate(action_dists),
-                    "rewards": np.array(rewards),
-                    "actions": np.array(actions)}
-            paths.append(path)
-            # self.agent.prev_action *= 0.0
-            # self.agent.prev_obs *= 0.0
-            timesteps_sofar += episode_steps
+            rewards.append(res[1])
+            episode_steps += 1
+            if res[2]:
+                break
+        path = {"obs": np.concatenate(np.expand_dims(self.obs, 0)),
+                "action_dists": np.concatenate(action_dists),
+                "rewards": np.array(rewards),
+                "actions": np.array(actions)}
+        self.paths.append(path)
+        # self.agent.prev_action *= 0.0
+        # self.agent.prev_obs *= 0.0
+        return path
+
+    def get_paths(self):
+        paths = self.paths
+        self.paths = []
         return paths
+
+    def process_paths(self, paths):
+        for path in paths:
+            path["baseline"] = self.vf.predict(path)
+            path["returns"] = discount(path["rewards"], pms.gamma)
+            path["advant"] = path["returns"] - path["baseline"]
+
+        # Updating policy.
+        action_dist_n = np.concatenate([path["action_dists"] for path in paths])
+        obs_n = np.concatenate([path["obs"] for path in paths])
+        action_n = np.concatenate([path["actions"] for path in paths])
+        rewards = np.concatenate([path["rewards"] for path in paths])
+        baseline_n = np.concatenate([path["baseline"] for path in paths])
+        returns_n = np.concatenate([path["returns"] for path in paths])
+
+        # Standardize the advantage function to have mean=0 and std=1.
+        advant_n = np.concatenate([path["advant"] for path in paths])
+        advant_n -= advant_n.mean()
+
+        # Computing baseline function for next iter.
+
+        advant_n /= (advant_n.std() + 1e-8)
+        self.baseline.fit(paths)
+        samples_data = dict(
+            observations=obs_n,
+            actions=action_n,
+            rewards=rewards,
+            advantages=advant_n,
+            agent_infos=action_dist_n,
+            paths=paths,
+        )
+        return samples_data
 
     def deal_image(self, image):
         index = len(self.obs_origin)
