@@ -1,16 +1,19 @@
 dims = (100, 100)
 timesteps_per_batch = 1000
+paths_number = 8
 max_pathlength = 100
 max_kl = 0.01
 cg_damping = 0.1
-gamma = 0.95
-render = False
-train_flag = True
-max_iter_number = 30
+discount = 0.99
+gae_lambda = 1.0
+center_adv = True
+render = True
+train_flag = False
+max_iter_number = 10000
 # dims of observation, also is the input dims of action network
 obs_height = 100
 obs_width = 100
 obs_channel = 1
 history_number = 2
-checkpoint_file = "checkpoint/iter29.ckpt"
-environment_name = "CartPole-v0"
+checkpoint_file = "checkpoint/iter3293.ckpt"
+environment_name = "SonyFaceP1-v2"

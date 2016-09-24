@@ -4,12 +4,13 @@ import parameters as pms
 
 
 class Storage(object):
-    def __init__(self, agent, env):
+    def __init__(self, agent, env, baseline):
         self.paths = []
         self.env = env
         self.agent = agent
         self.obs = []
         self.obs_origin = []
+        self.baseline = baseline
 
     def get_single_path(self):
         self.obs_origin, self.obs, actions, rewards, action_dists = [], [], [], [], []
@@ -30,14 +31,17 @@ class Storage(object):
                 self.env.render()
             ob = res[0]
             ob = self.env.render('rgb_array')
-            rewards.append(res[1])
+            rewards.append([res[1]])
             episode_steps += 1
             if res[2]:
                 break
-        path = {"obs": np.concatenate(np.expand_dims(self.obs, 0)),
-                "action_dists": np.concatenate(action_dists),
-                "rewards": np.array(rewards),
-                "actions": np.array(actions)}
+        path = dict(
+            observations=np.concatenate(np.expand_dims(self.obs, 0)),
+            agent_infos=np.concatenate(action_dists),
+            rewards=np.array(rewards),
+            actions=np.array(actions),
+            episode_steps=episode_steps
+        )
         self.paths.append(path)
         # self.agent.prev_action *= 0.0
         # self.agent.prev_obs *= 0.0
@@ -49,34 +53,41 @@ class Storage(object):
         return paths
 
     def process_paths(self, paths):
+        # baselines = []
+        # returns = []
+        sum_episode_steps = 0
         for path in paths:
-            path["baseline"] = self.vf.predict(path)
-            path["returns"] = discount(path["rewards"], pms.gamma)
-            path["advant"] = path["returns"] - path["baseline"]
+            sum_episode_steps += path['episode_steps']
+            path_baselines = np.append(self.baseline.predict(path), 0)
+            deltas = np.concatenate(path["rewards"]) + \
+                     pms.discount * path_baselines[1:] - \
+                     path_baselines[:-1]
+            path["advantages"] = discount(
+                deltas, pms.discount * pms.gae_lambda)
+            path["returns"] = np.concatenate(discount(path["rewards"], pms.discount))
+            # baselines.append(path_baselines[:-1])
+            # returns.append(path["returns"])
 
         # Updating policy.
-        action_dist_n = np.concatenate([path["action_dists"] for path in paths])
-        obs_n = np.concatenate([path["obs"] for path in paths])
+        action_dist_n = np.concatenate([path["agent_infos"] for path in paths])
+        obs_n = np.concatenate([path["observations"] for path in paths])
         action_n = np.concatenate([path["actions"] for path in paths])
         rewards = np.concatenate([path["rewards"] for path in paths])
-        baseline_n = np.concatenate([path["baseline"] for path in paths])
-        returns_n = np.concatenate([path["returns"] for path in paths])
+        advantages = np.concatenate([path["advantages"] for path in paths])
 
-        # Standardize the advantage function to have mean=0 and std=1.
-        advant_n = np.concatenate([path["advant"] for path in paths])
-        advant_n -= advant_n.mean()
+        if pms.center_adv:
+            advantages = (advantages - np.mean(advantages)) / (advantages.std() + 1e-8)
 
-        # Computing baseline function for next iter.
-
-        advant_n /= (advant_n.std() + 1e-8)
         self.baseline.fit(paths)
+
         samples_data = dict(
             observations=obs_n,
             actions=action_n,
             rewards=rewards,
-            advantages=advant_n,
+            advantages=advantages,
             agent_infos=action_dist_n,
             paths=paths,
+            sum_episode_steps=sum_episode_steps
         )
         return samples_data
 

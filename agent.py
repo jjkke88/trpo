@@ -1,5 +1,6 @@
 
 from utils import *
+from dealImage import *
 from logger.logger import Logger
 import krylov
 import numpy as np
@@ -7,11 +8,13 @@ import random
 import tensorflow as tf
 import time
 
+
 import prettytensor as pt
 
 from storage import Storage
 import parameters as pms
 from distribution.diagonal_category import DiagonalCategory
+from baseline.baseline_tf_image import BaselineTfImage
 
 class TRPOAgent(object):
     config = dict2(**{
@@ -31,16 +34,19 @@ class TRPOAgent(object):
         print("Action Space", env.action_space)
         self.distribution = DiagonalCategory()
         self.session = tf.Session()
+        self.baseline = BaselineTfImage(self.session)
         self.end_count = 0
         self.paths = []
         self.train = True
-        self.storage = Storage(self, self.env)
+        self.storage = Storage(self, self.env, self.baseline)
         self.init_network()
+        if pms.train_flag:
+            self.init_logger()
 
     def init_logger(self):
         head = ["average_episode_std", "total number of episodes", "Average sum of rewards per episode",
                 "KL between old and new distribution", "Surrogate loss", "Surrogate loss prev", "ds", "entropy",
-                "mean_advant"]
+                "mean_advant", "sum_episode_steps"]
         self.logger = Logger(head)
 
     def init_network(self):
@@ -90,12 +96,13 @@ class TRPOAgent(object):
         self.fvp = flatgrad(gvp, var_list)
         self.gf = GetFlat(self.session, var_list)
         self.sff = SetFromFlat(self.session, var_list)
-        self.vf = VF(self.session, type="rgb_array")
+        self.saver = tf.train.Saver(max_to_keep=10)
         self.session.run(tf.initialize_all_variables())
+
         # self.load_model(pms.checkpoint_file)
 
     def get_samples(self, path_number):
-        for i in range(pms.paths_number):
+        for i in range(path_number):
             self.storage.get_single_path()
 
     def act(self, obs, *args):
@@ -116,11 +123,13 @@ class TRPOAgent(object):
         for iteration in range(pms.max_iter_number):
             # Generating paths.
             print("Rollout")
+            self.get_samples(pms.paths_number)
             paths = self.storage.get_paths() # get_paths
             # Computing returns and estimating advantage function.
 
             sample_data = self.storage.process_paths(paths)
-
+            # shape = sample_data["observations"].shape
+            # vis_square(np.reshape(sample_data["observations"],(shape[0], shape[2], shape[3]))[1:10])
             feed = {self.obs: sample_data["observations"],
                     self.action: sample_data["actions"],
                     self.advant: sample_data["advantages"],
@@ -137,7 +146,6 @@ class TRPOAgent(object):
                 if self.end_count > 100:
                     break
             if self.train:
-                self.vf.fit(paths)
                 thprev = self.gf()
 
                 def fisher_vector_product(p):
@@ -146,7 +154,7 @@ class TRPOAgent(object):
 
                 g = self.session.run(self.pg, feed_dict=feed)
                 ep_num_input = tf.placeholder(dtype="float32",shape=None,name="ep_num")
-                stepdir = krylov.cg(fisher_vector_product, -g)
+                stepdir = krylov.cg(fisher_vector_product, g)
                 shs = 0.5 * stepdir.dot(fisher_vector_product(stepdir))  # theta
                 fullstep = stepdir * np.sqrt(2.0 * pms.max_kl / shs)
                 neggdotstepdir = -g.dot(stepdir)
@@ -154,7 +162,7 @@ class TRPOAgent(object):
                 def loss(th):
                     self.sff(th)
                     return self.session.run(self.losses, feed_dict=feed)
-                surr_prev, kl_prev = loss(thprev)
+                surr_prev, kl_prev, entropy= loss(thprev)
                 theta = linesearch(loss, thprev, fullstep, neggdotstepdir)
                 self.sff(theta)
 
@@ -173,10 +181,12 @@ class TRPOAgent(object):
                 stats["Time elapsed"] = "%.2f mins" % ((time.time() - start_time) / 60.0)
                 stats["KL between old and new distribution"] = kloldnew
                 stats["Surrogate loss"] = surrafter
+                stats['Sum episode steps'] = sample_data["sum_episode_steps"]
                 log_data = [0, numeptotal, episoderewards.mean(), kloldnew, surrafter, surr_prev,
                             surrafter - surr_prev,
-                            sample_data["entropy"], mean_advant]
-                self.logger.log_row(log_data)
+                            entropy, mean_advant, sample_data["sum_episode_steps"]]
+                if pms.train_flag:
+                    self.logger.log_row(log_data)
                 for k, v in stats.iteritems():
                     print(k + ": " + " " * (40 - len(k)) + str(v))
                 self.save_model("iter"+str(i))
@@ -184,7 +194,12 @@ class TRPOAgent(object):
 
     def test(self, model_name="checkpoint/checkpoint"):
         self.load_model(model_name)
-        self.storage.get_paths()
+        for i in range(10):
+            self.get_samples(1)
+            paths = self.storage.get_paths()
+            sample_data = self.storage.process_paths(paths)
+            print "step number%d"%(len(sample_data["rewards"]))
+            print "everage reward%f"%(np.mean(sample_data["rewards"]))
 
     def save_model(self, model_name):
         self.saver.save(self.session, "checkpoint/"+model_name+".ckpt")
