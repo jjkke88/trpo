@@ -15,8 +15,8 @@ class BaselineTfImage(object):
         self.y = tf.placeholder(tf.float32, shape=[None], name="y")
         self.net = (pt.wrap(self.x).
                     reshape((None, pms.obs_height, pms.obs_width, 1)).
-                    conv2d(4, 1).
-                    conv2d(4, 1).
+                    conv2d(4, 1, stride=2, batch_normalize=True).
+                    conv2d(4, 1, stride=2, batch_normalize=True).
                     flatten().
                     fully_connected(32, activation_fn=tf.nn.relu).
                     fully_connected(32, activation_fn=tf.nn.relu).

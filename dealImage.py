@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def vis_square(data, padsize=1, padval=1):
+def vis_square(data, padsize=1, padval=0):
     data -= data.min()
     data /= data.max()
 

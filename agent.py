@@ -11,10 +11,10 @@ import time
 
 import prettytensor as pt
 
-from storage import Storage
+from storage.storage import Storage
 import parameters as pms
 from distribution.diagonal_category import DiagonalCategory
-from baseline.baseline_tf_image import BaselineTfImage
+from baseline.baseline_lstsq import Baseline
 
 class TRPOAgent(object):
     config = dict2(**{
@@ -34,7 +34,7 @@ class TRPOAgent(object):
         print("Action Space", env.action_space)
         self.distribution = DiagonalCategory()
         self.session = tf.Session()
-        self.baseline = BaselineTfImage(self.session)
+        self.baseline = Baseline()
         self.end_count = 0
         self.paths = []
         self.train = True
@@ -51,7 +51,7 @@ class TRPOAgent(object):
 
     def init_network(self):
         self.obs = obs = tf.placeholder(
-            dtype, shape=[None, 1, pms.obs_height, pms.obs_width], name="obs")
+            dtype, shape=[None, self.env.observation_space.shape[0]], name="obs")
         self.action = action = tf.placeholder(tf.int64, shape=[None], name="action")
         self.advant = advant = tf.placeholder(dtype, shape=[None], name="advant")
         self.oldaction_dist = oldaction_dist = tf.placeholder(dtype, shape=[None, self.env.action_space.n],
@@ -59,11 +59,8 @@ class TRPOAgent(object):
 
         # Create neural network.
         action_dist_n, _ = (pt.wrap(self.obs).
-                            reshape((None, pms.obs_height, pms.obs_width, 1)).
-                            conv2d(4, 1).
-                            conv2d(4, 1).
-                            flatten().
-                            fully_connected(64, activation_fn=tf.nn.tanh).
+                            fully_connected(32, activation_fn=tf.nn.relu).
+                            fully_connected(32, activation_fn=tf.nn.relu).
                             softmax_classifier(self.env.action_space.n))
         eps = 1e-6
         self.action_dist_n = action_dist_n
@@ -153,7 +150,6 @@ class TRPOAgent(object):
                     return self.session.run(self.fvp, feed) + config.cg_damping * p
 
                 g = self.session.run(self.pg, feed_dict=feed)
-                ep_num_input = tf.placeholder(dtype="float32",shape=None,name="ep_num")
                 stepdir = krylov.cg(fisher_vector_product, g)
                 shs = 0.5 * stepdir.dot(fisher_vector_product(stepdir))  # theta
                 fullstep = stepdir * np.sqrt(2.0 * pms.max_kl / shs)
@@ -174,7 +170,7 @@ class TRPOAgent(object):
                 numeptotal += len(sample_data["rewards"])
                 mean_advant = np.mean(sample_data["advantages"])
                 stats["Total number of episodes"] = numeptotal
-                stats["Average sum of rewards per episode"] = episoderewards.mean()
+                stats["Average sum of rewards per episode"] = np.mean(sample_data["rewards"])
                 # stats["Entropy"] = entropy
                 # exp = explained_variance(np.array(sample_data[""]), np.array(returns_n))
                 # stats["Baseline explained"] = exp
@@ -194,12 +190,20 @@ class TRPOAgent(object):
 
     def test(self, model_name="checkpoint/checkpoint"):
         self.load_model(model_name)
-        for i in range(10):
+        self.success_number = 0.0
+        test_iter_number = 50
+        for i in range(test_iter_number):
             self.get_samples(1)
             paths = self.storage.get_paths()
             sample_data = self.storage.process_paths(paths)
-            print "step number%d"%(len(sample_data["rewards"]))
-            print "everage reward%f"%(np.mean(sample_data["rewards"]))
+            max_reward = np.max(sample_data["rewards"])
+            # print "step number%d"%(len(sample_data["rewards"]))
+            # print "max reward%f" % (max_reward)
+            # print "everage reward%f"%(np.mean(sample_data["rewards"]))
+            # print "\n"
+            if max_reward > 0:
+                self.success_number += 1.0
+        print "success_rate%f"%(self.success_number/float(test_iter_number))
 
     def save_model(self, model_name):
         self.saver.save(self.session, "checkpoint/"+model_name+".ckpt")
