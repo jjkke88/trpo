@@ -11,18 +11,12 @@ import time
 
 import prettytensor as pt
 
-from storage.storage import Storage
+from storage.storage_image import Storage
 import parameters as pms
 from distribution.diagonal_category import DiagonalCategory
-from baseline.baseline_lstsq import Baseline
+from baseline.baseline_tf_image import BaselineTfImage
 
 class TRPOAgent(object):
-    config = dict2(**{
-        "timesteps_per_batch": 1000,
-        "max_pathlength": 10000,
-        "max_kl": 0.01,
-        "cg_damping": 0.1,
-        "gamma": 0.95})
 
     def __init__(self, env):
         self.env = env
@@ -34,7 +28,7 @@ class TRPOAgent(object):
         print("Action Space", env.action_space)
         self.distribution = DiagonalCategory()
         self.session = tf.Session()
-        self.baseline = Baseline()
+        self.baseline = BaselineTfImage(session=self.session)
         self.end_count = 0
         self.paths = []
         self.train = True
@@ -51,7 +45,7 @@ class TRPOAgent(object):
 
     def init_network(self):
         self.obs = obs = tf.placeholder(
-            dtype, shape=[None, self.env.observation_space.shape[0]], name="obs")
+            dtype, shape=[None, pms.obs_height, pms.obs_width, pms.obs_channel], name="obs")
         self.action = action = tf.placeholder(tf.int64, shape=[None], name="action")
         self.advant = advant = tf.placeholder(dtype, shape=[None], name="advant")
         self.oldaction_dist = oldaction_dist = tf.placeholder(dtype, shape=[None, self.env.action_space.n],
@@ -59,6 +53,9 @@ class TRPOAgent(object):
 
         # Create neural network.
         action_dist_n, _ = (pt.wrap(self.obs).
+                            conv2d(4,16, stride=2, batch_normalize=True).
+                            conv2d(4,16, stride=2, batch_normalize=True).
+                            flatten().
                             fully_connected(32, activation_fn=tf.nn.relu).
                             fully_connected(32, activation_fn=tf.nn.relu).
                             softmax_classifier(self.env.action_space.n))
@@ -113,7 +110,6 @@ class TRPOAgent(object):
         return action, action_dist_n, np.squeeze(obs)
 
     def learn(self):
-        config = self.config
         start_time = time.time()
         numeptotal = 0
         i = 0
@@ -132,8 +128,6 @@ class TRPOAgent(object):
                     self.advant: sample_data["advantages"],
                     self.oldaction_dist: sample_data["agent_infos"]}
 
-
-
             print "\n********** Iteration %i ************" % i
             # if episoderewards.mean() > 1.1 * self.env._env.spec.reward_threshold:
             #     self.train = False
@@ -147,7 +141,7 @@ class TRPOAgent(object):
 
                 def fisher_vector_product(p):
                     feed[self.flat_tangent] = p
-                    return self.session.run(self.fvp, feed) + config.cg_damping * p
+                    return self.session.run(self.fvp, feed) + pms.cg_damping * p
 
                 g = self.session.run(self.pg, feed_dict=feed)
                 stepdir = krylov.cg(fisher_vector_product, g)

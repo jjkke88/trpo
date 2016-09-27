@@ -104,4 +104,4 @@ class Storage(object):
         image_end = np.concatenate(image_end)
         # image_end = image_end.reshape((pms.obs_height, pms.obs_width, pms.history_number))
         obs = cv2.resize(cv2.cvtColor(image_end, cv2.COLOR_RGB2GRAY) / 255., (pms.obs_height, pms.obs_width))
-        return np.expand_dims(obs, 0)
+        return np.reshape(obs, (100,100,1))

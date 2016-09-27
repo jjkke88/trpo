@@ -47,6 +47,7 @@ class Storage(object):
         for path in paths:
             sum_episode_steps += path['episode_steps']
             path_baselines = np.append(self.baseline.predict(path), 0)
+            # deltas = r_t+V(s_{t+1})-V(s_t)
             deltas = np.concatenate(path["rewards"]) + \
                      pms.discount * path_baselines[1:] - \
                      path_baselines[:-1]
