@@ -3,11 +3,10 @@ import logging
 import gym
 from gym import envs, scoreboard
 from gym.spaces import Discrete, Box
-from space_conversion import SpaceConversionEnv
 import tempfile
 import sys
 from environment import Environment
-from agent import TRPOAgent
+from agent.agent_disperse import TRPOAgent
 import parameters as pms
 
 training_dir = tempfile.mkdtemp()

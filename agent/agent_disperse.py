@@ -1,4 +1,3 @@
-
 from utils import *
 from dealImage import *
 from logger.logger import Logger
@@ -8,15 +7,21 @@ import random
 import tensorflow as tf
 import time
 
-
 import prettytensor as pt
 
-from storage.storage_image import Storage
+from storage.storage import Storage
 import parameters as pms
 from distribution.diagonal_category import DiagonalCategory
-from baseline.baseline_tf_image import BaselineTfImage
+from baseline.baseline_lstsq import Baseline
+
 
 class TRPOAgent(object):
+    config = dict2(**{
+        "timesteps_per_batch": 1000,
+        "max_pathlength": 10000,
+        "max_kl": 0.01,
+        "cg_damping": 0.1,
+        "gamma": 0.95})
 
     def __init__(self, env):
         self.env = env
@@ -28,7 +33,7 @@ class TRPOAgent(object):
         print("Action Space", env.action_space)
         self.distribution = DiagonalCategory()
         self.session = tf.Session()
-        self.baseline = BaselineTfImage(session=self.session)
+        self.baseline = Baseline()
         self.end_count = 0
         self.paths = []
         self.train = True
@@ -45,7 +50,7 @@ class TRPOAgent(object):
 
     def init_network(self):
         self.obs = obs = tf.placeholder(
-            dtype, shape=[None, pms.obs_height, pms.obs_width, pms.obs_channel], name="obs")
+            dtype, shape=[None, self.env.observation_space.shape[0]], name="obs")
         self.action = action = tf.placeholder(tf.int64, shape=[None], name="action")
         self.advant = advant = tf.placeholder(dtype, shape=[None], name="advant")
         self.oldaction_dist = oldaction_dist = tf.placeholder(dtype, shape=[None, self.env.action_space.n],
@@ -53,9 +58,6 @@ class TRPOAgent(object):
 
         # Create neural network.
         action_dist_n, _ = (pt.wrap(self.obs).
-                            conv2d(4,16, stride=2, batch_normalize=True).
-                            conv2d(4,16, stride=2, batch_normalize=True).
-                            flatten().
                             fully_connected(32, activation_fn=tf.nn.relu).
                             fully_connected(32, activation_fn=tf.nn.relu).
                             softmax_classifier(self.env.action_space.n))
@@ -110,6 +112,7 @@ class TRPOAgent(object):
         return action, action_dist_n, np.squeeze(obs)
 
     def learn(self):
+        config = self.config
         start_time = time.time()
         numeptotal = 0
         i = 0
@@ -117,7 +120,7 @@ class TRPOAgent(object):
             # Generating paths.
             print("Rollout")
             self.get_samples(pms.paths_number)
-            paths = self.storage.get_paths() # get_paths
+            paths = self.storage.get_paths()  # get_paths
             # Computing returns and estimating advantage function.
 
             sample_data = self.storage.process_paths(paths)
@@ -141,7 +144,7 @@ class TRPOAgent(object):
 
                 def fisher_vector_product(p):
                     feed[self.flat_tangent] = p
-                    return self.session.run(self.fvp, feed) + pms.cg_damping * p
+                    return self.session.run(self.fvp, feed) + config.cg_damping * p
 
                 g = self.session.run(self.pg, feed_dict=feed)
                 stepdir = krylov.cg(fisher_vector_product, g)
@@ -152,7 +155,8 @@ class TRPOAgent(object):
                 def loss(th):
                     self.sff(th)
                     return self.session.run(self.losses, feed_dict=feed)
-                surr_prev, kl_prev, entropy= loss(thprev)
+
+                surr_prev, kl_prev, entropy = loss(thprev)
                 theta = linesearch(loss, thprev, fullstep, neggdotstepdir)
                 self.sff(theta)
 
@@ -179,7 +183,7 @@ class TRPOAgent(object):
                     self.logger.log_row(log_data)
                 for k, v in stats.iteritems():
                     print(k + ": " + " " * (40 - len(k)) + str(v))
-                self.save_model("iter"+str(i))
+                self.save_model("iter" + str(i))
             i += 1
 
     def test(self, model_name="checkpoint/checkpoint"):
@@ -197,14 +201,13 @@ class TRPOAgent(object):
             # print "\n"
             if max_reward > 0:
                 self.success_number += 1.0
-        print "success_rate%f"%(self.success_number/float(test_iter_number))
+        print "success_rate%f" % (self.success_number / float(test_iter_number))
 
     def save_model(self, model_name):
-        self.saver.save(self.session, "checkpoint/"+model_name+".ckpt")
+        self.saver.save(self.session, "checkpoint/" + model_name + ".ckpt")
 
     def load_model(self, model_name="checkpoint/checkpoint"):
         try:
             self.saver.restore(self.session, model_name)
         except:
-            print "load model %s fail"%(model_name)
-
+            print "load model %s fail" % (model_name)

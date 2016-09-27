@@ -4,6 +4,11 @@ import random
 import scipy.signal
 import prettytensor as pt
 import parameters as pms
+<<<<<<< HEAD
+=======
+import threading
+from tensorflow.contrib.layers.python.layers import initializers
+>>>>>>> trpo-continues-action
 
 seed = 1
 random.seed(seed)
@@ -16,22 +21,92 @@ def discount(x, gamma):
     assert x.ndim >= 1
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
-def rollout(env, agent, max_pathlength, n_timesteps):
+# class VF(object):
+#     coeffs = None
+#
+#     def __init__(self, session, type="origin"):
+#         self.net = None
+#         self.session = session
+#         self.type = type
+#
+#     def create_net(self, shape):
+#         self.x = tf.placeholder(tf.float32, shape=[None, shape], name="x")
+#         self.y = tf.placeholder(tf.float32, shape=[None], name="y")
+#         self.net = (pt.wrap(self.x).
+#                     fully_connected(64, activation_fn=tf.nn.relu).
+#                     fully_connected(64, activation_fn=tf.nn.relu).
+#                     fully_connected(1))
+#         self.net = tf.reshape(self.net, (-1, ))
+#         l2 = (self.net - self.y) * (self.net - self.y)
+#         self.train = tf.train.AdamOptimizer().minimize(l2)
+#         self.session.run(tf.initialize_all_variables())
+#
+#     def _features(self, path):
+#         if self.type == "origin":
+#             o = path["obs"].astype('float32')
+#             o = o.reshape(o.shape[0], -1)
+#             act = path["action_dists"].astype('float32')
+#             l = len(path["rewards"])
+#             al = np.arange(l).reshape(-1, 1) / 10.0
+#             # up to down stack obs, action_dst, al, np.ones((l,1))
+#             ret = np.concatenate([o, act, al, np.ones((l, 1))], axis=1)
+#             # ret = np.concatenate([o], axis=1)
+#         elif self.type == "rgb_array":
+#             ret = path["obs"].astype('float32')
+#         return ret
+#
+#     def fit(self, paths):
+#         featmat = np.concatenate([self._features(path) for path in paths])
+#         if self.net is None:
+#             self.create_net(featmat.shape[1])
+#         returns = np.concatenate([path["returns"] for path in paths])
+#         for _ in range(50):
+#             self.session.run(self.train, {self.x: featmat, self.y: returns})
+#
+#     def predict(self, path):
+#         if self.net is None:
+#             return np.zeros(len(path["rewards"]))
+#         else:
+#             ret = self.session.run(self.net, {self.x: self._features(path)})
+#             return np.reshape(ret, (ret.shape[0], ))
+
+def rollout(env, agent, paths):
+    """
+        :param:observations:obs list
+        :param:actions:action list
+        :param:rewards:reward list
+        :param:agent_infos: mean+log_std dictlist
+        :param:env_infos: no use, just information about environment
+        :return: a path, list
+        """
     paths = []
-    timesteps_sofar = 0
-    while timesteps_sofar < n_timesteps:
-        obs, actions, rewards, action_dists = [], [], [], []
-        ob = env.reset()
-        agent.prev_action *= 0.0
-        agent.prev_obs *= 0.0
-        episode_steps = 0
-        for _ in xrange(max_pathlength):
-            action, action_dist, ob = agent.act(ob)
-            obs.append(ob)
-            actions.append(action)
-            action_dists.append(action_dist)
-            res = env.step(action)
+    observations = []
+    actions = []
+    rewards = []
+    agent_infos = []
+    env_infos = []
+    o = env.reset()
+    path_sum_length = 0
+    if pms.render:
+        env.render()
+    o = env.reset()
+    path_length = 0
+    while path_length < pms.max_path_length:
+        a , agent_info = agent.get_action(o)
+        next_o , reward , terminal , env_info = env.step(a)
+        observations.append(o)
+        rewards.append(np.array([reward]))
+        actions.append(a)
+        agent_infos.append([agent_info])
+        env_infos.append([env_info])
+        path_length += 1
+        path_sum_length += 1
+        if terminal:
+            break
+        o = next_o
+        if pms.render:
             env.render()
+<<<<<<< HEAD
             ob = res[0]
             rewards.append(res[1])
             episode_steps += 1
@@ -101,6 +176,16 @@ class VF(object):
             ret = self.session.run(self.net, {self.x: self._features(path)})
             return np.reshape(ret, (ret.shape[0], ))
 
+=======
+    np.save("datalog/action.npy" , actions)
+    paths.append(dict(
+        observations=np.array(observations) ,
+        actions=np.array(actions) ,
+        rewards=np.array(rewards) ,
+        agent_infos=np.concatenate(agent_infos) ,
+        env_infos=np.concatenate(env_infos) ,
+    ))
+>>>>>>> trpo-continues-action
 
 def cat_sample(prob_nk):
     assert prob_nk.ndim == 2
@@ -133,7 +218,6 @@ def flatgrad(loss, var_list):
 
 # set theta
 class SetFromFlat(object):
-
     def __init__(self, session, var_list):
         self.session = session
         assigns = []
@@ -170,6 +254,7 @@ class GetFlat(object):
 
 
 def slice_2d(x, inds0, inds1):
+    # assume that a path have 1000 vector, then ncols=action dims, inds0=1000,inds1=
     inds0 = tf.cast(inds0, tf.int64)
     inds1 = tf.cast(inds1, tf.int64)
     shape = tf.cast(tf.shape(x), tf.int64)
@@ -181,10 +266,17 @@ def slice_2d(x, inds0, inds1):
 def linesearch(f, x, fullstep, expected_improve_rate):
     accept_ratio = .1
     max_backtracks = 10
+<<<<<<< HEAD
     fval, old_kl, entropy = f(x)
     for (_n_backtracks, stepfrac) in enumerate(.3**np.arange(max_backtracks)):
         xnew = x - stepfrac * fullstep
         newfval, new_kl, new_ent= f(xnew)
+=======
+    fval, old_kl = f(x)
+    for (_n_backtracks, stepfrac) in enumerate(.3**np.arange(max_backtracks)):
+        xnew = x - stepfrac * fullstep
+        newfval, new_kl = f(xnew)
+>>>>>>> trpo-continues-action
         # actual_improve = newfval - fval # minimize target object
         # expected_improve = expected_improve_rate * stepfrac
         # ratio = actual_improve / expected_improve
@@ -195,24 +287,6 @@ def linesearch(f, x, fullstep, expected_improve_rate):
     return x
 
 
-def conjugate_gradient(f_Ax, b, cg_iters=10, residual_tol=1e-10):
-    p = b.copy()
-    r = b.copy()
-    x = np.zeros_like(b)
-    rdotr = r.dot(r)
-    for i in xrange(cg_iters):
-        z = f_Ax(p)
-        v = rdotr / p.dot(z)
-        x += v * p
-        r -= v * z
-        newrdotr = r.dot(r)
-        mu = newrdotr / rdotr
-        p = r + mu * p
-        rdotr = newrdotr
-        if rdotr < residual_tol:
-            break
-    return x
-
 class dict2(dict):
     def __init__(self, **kwargs):
         dict.__init__(self, kwargs)
@@ -222,3 +296,38 @@ def explained_variance(ypred, y):
     assert y.ndim == 1 and ypred.ndim == 1
     vary = np.var(y)
     return np.nan if vary==0 else 1 - np.var(y-ypred)/vary
+
+def countMatrixMultiply(matrix):
+    result_end = []
+    for j in matrix:
+        result = 1.0
+        for i in j:
+            result *= i
+        result_end.append(result)
+    return np.array(result_end)
+
+def kl_sym(old_dist_means, old_dist_logstds, new_dist_means, new_dist_logstds):
+    old_std = tf.exp(old_dist_logstds)
+    new_std = tf.exp(new_dist_logstds)
+    # means: (N*A)
+    # std: (N*A)
+    # formula:
+    # { (\mu_1 - \mu_2)^2 + \sigma_1^2 - \sigma_2^2 } / (2\sigma_2^2) +
+    # ln(\sigma_2/\sigma_1)
+    numerator = tf.square(old_dist_means - new_dist_means) + \
+                tf.square(old_std) - tf.square(new_std)
+    denominator = 2 * tf.square(new_std) + 1e-8
+    return tf.reduce_sum(
+        numerator / denominator + new_dist_logstds - old_dist_logstds)
+
+def kl_sym_gradient(old_dist_means, old_dist_logstds, new_dist_means, new_dist_logstds):
+    old_std = tf.exp(old_dist_logstds)
+    new_std = tf.exp(new_dist_logstds)
+    numerator = tf.square(tf.stop_gradient(new_dist_means) - new_dist_means) + \
+                tf.square(tf.stop_gradient(new_std)) - tf.square(new_std)
+
+
+    denominator = 2 * tf.square(new_std) + 1e-8
+    return tf.reduce_sum(
+        numerator / denominator + new_dist_logstds - tf.stop_gradient(new_dist_logstds))
+

@@ -1,6 +1,4 @@
 import numpy as np
-
-
 class Baseline(object):
     def __init__(self, reg_coeff=1e-5):
         self._coeffs = None
