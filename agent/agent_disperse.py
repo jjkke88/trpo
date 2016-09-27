@@ -16,13 +16,6 @@ from baseline.baseline_lstsq import Baseline
 
 
 class TRPOAgent(object):
-    config = dict2(**{
-        "timesteps_per_batch": 1000,
-        "max_pathlength": 10000,
-        "max_kl": 0.01,
-        "cg_damping": 0.1,
-        "gamma": 0.95})
-
     def __init__(self, env):
         self.env = env
         # if not isinstance(env.observation_space, Box) or \
@@ -112,10 +105,8 @@ class TRPOAgent(object):
         return action, action_dist_n, np.squeeze(obs)
 
     def learn(self):
-        config = self.config
         start_time = time.time()
         numeptotal = 0
-        i = 0
         for iteration in range(pms.max_iter_number):
             # Generating paths.
             print("Rollout")
@@ -131,20 +122,12 @@ class TRPOAgent(object):
                     self.advant: sample_data["advantages"],
                     self.oldaction_dist: sample_data["agent_infos"]}
 
-            print "\n********** Iteration %i ************" % i
-            # if episoderewards.mean() > 1.1 * self.env._env.spec.reward_threshold:
-            #     self.train = False
-            if not self.train:
-                print("Episode mean: %f" % episoderewards.mean())
-                self.end_count += 1
-                if self.end_count > 100:
-                    break
+            print "\n********** Iteration %i ************" % iteration
             if self.train:
                 thprev = self.gf()
-
                 def fisher_vector_product(p):
                     feed[self.flat_tangent] = p
-                    return self.session.run(self.fvp, feed) + config.cg_damping * p
+                    return self.session.run(self.fvp, feed) + pms.cg_damping * p
 
                 g = self.session.run(self.pg, feed_dict=feed)
                 stepdir = krylov.cg(fisher_vector_product, g)
@@ -183,8 +166,7 @@ class TRPOAgent(object):
                     self.logger.log_row(log_data)
                 for k, v in stats.iteritems():
                     print(k + ": " + " " * (40 - len(k)) + str(v))
-                self.save_model("iter" + str(i))
-            i += 1
+                self.save_model("iter" + str(iteration))
 
     def test(self, model_name="checkpoint/checkpoint"):
         self.load_model(model_name)

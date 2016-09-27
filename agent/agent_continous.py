@@ -6,8 +6,8 @@ import time
 import threading
 import prettytensor as pt
 
-from storage import Storage
-from storage import Rollout
+from storage.storage_continous import Storage
+from storage.storage_continous import Rollout
 import math
 import parameters as pms
 import krylov
@@ -21,13 +21,6 @@ tf.set_random_seed(seed)
 
 
 class TRPOAgent(object):
-    config = dict2(**{
-        "timesteps_per_batch": 1000,
-        "max_pathlength": 10000,
-        "max_kl": 0.01,
-        "cg_damping": 0.1,
-        "gamma": 0.95,
-        "deviation": 0.1})
 
     def __init__(self, env):
         self.env = env
@@ -43,15 +36,15 @@ class TRPOAgent(object):
         self.end_count = 0
         self.paths = []
         self.train = True
-
-        self.baseline = Baseline(session=self.session)
+        self.baseline = Baseline()
         self.storage = Storage(self, self.env, self.baseline)
+        self.distribution = DiagonalGaussian(pms.action_shape)
         self.init_network()
         if pms.train_flag:
             self.init_logger()
 
     def init_logger(self):
-        head = ["average_episode_std", "total number of episodes", "Average sum of rewards per episode",
+        head = ["average_episode_std", "sum steps episode number" "total number of episodes", "Average sum of rewards per episode",
                 "KL between old and new distribution", "Surrogate loss", "Surrogate loss prev", "ds", "entropy",
                 "mean_advant"]
         self.logger = Logger(head)
@@ -96,7 +89,7 @@ class TRPOAgent(object):
         if pms.min_std is not None:
             log_std_var = tf.maximum(self.action_dist_logstds_n, np.log(pms.min_std))
         self.action_dist_stds_n = tf.exp(log_std_var)
-        self.distribution = DiagonalGaussian(pms.action_shape)
+
         self.old_dist_info_vars = dict(mean=self.old_dist_means_n, log_std=self.old_dist_logstds_n)
         self.new_dist_info_vars = dict(mean=self.action_dist_means_n, log_std=self.action_dist_logstds_n)
         self.likehood_action_dist = self.distribution.log_likelihood_sym(self.action_n, self.new_dist_info_vars)
@@ -105,8 +98,9 @@ class TRPOAgent(object):
 
         surr = -tf.reduce_mean(self.ratio_n * self.advant)  # Surrogate loss
         kl = tf.reduce_mean(self.distribution.kl_sym(self.old_dist_info_vars, self.new_dist_info_vars))
+        ent = self.distribution.entropy(self.old_dist_info_vars)
         # ent = tf.reduce_sum(-p_n * tf.log(p_n + eps)) / Nf
-        self.losses = [surr, kl]
+        self.losses = [surr, kl, ent]
 
         var_list = tf.trainable_variables()
         self.gf = GetFlat(self.session, var_list)  # get theta from var_list
@@ -135,7 +129,6 @@ class TRPOAgent(object):
 
         self.session.run(tf.initialize_all_variables())
         self.saver = tf.train.Saver(max_to_keep=10)
-        self.writer = tf.train.SummaryWriter("log", self.session.graph)
         # self.load_model()
 
     def get_samples(self, path_number):
@@ -193,7 +186,6 @@ class TRPOAgent(object):
             obs_n = sample_data["observations"]
             action_n = sample_data["actions"]
             advant_n = sample_data["advantages"]
-
             n_samples = len(obs_n)
             inds = np.random.choice(n_samples, math.floor(n_samples * pms.subsample_factor), replace=False)
             obs_n = obs_n[inds]
@@ -236,18 +228,19 @@ class TRPOAgent(object):
                         self.sff(th)
                         return self.session.run(self.losses, feed_dict=feed)
 
-                    surr_prev, kl_prev = loss(thprev)
+                    surr_prev, kl_prev, ent_prev = loss(thprev)
                     mean_advant = np.mean(advant_n)
                     theta = linesearch(loss, thprev, fullstep, neggdotstepdir)
                     self.sff(theta)
 
-                    surrafter, kloldnew = self.session.run(self.losses, feed_dict=feed)
+                    surrafter, kloldnew, entnew = self.session.run(self.losses, feed_dict=feed)
 
                     stats = {}
 
                     numeptotal += len(episoderewards)
 
                     stats["average_episode_std"] = average_episode_std
+                    stats["sum steps of episodes"] = sample_data["sum_episode_steps"]
                     stats["Total number of episodes"] = numeptotal
                     stats["Average sum of rewards per episode"] = episoderewards.mean()
                     # stats["Entropy"] = entropy
@@ -257,11 +250,11 @@ class TRPOAgent(object):
                     stats["KL between old and new distribution"] = kloldnew
                     stats["Surrogate loss"] = surrafter
                     stats["Surrogate loss prev"] = surr_prev
-                    stats["entropy"] = sample_data["entropy"]
+                    stats["entropy"] = ent_prev
                     stats["mean_advant"] = mean_advant
-                    log_data = [average_episode_std, numeptotal, episoderewards.mean(), kloldnew, surrafter, surr_prev,
+                    log_data = [average_episode_std, len(episoderewards), numeptotal, episoderewards.mean(), kloldnew, surrafter, surr_prev,
                                 surrafter - surr_prev,
-                                sample_data["entropy"], mean_advant]
+                                ent_prev, mean_advant]
                     self.logger.log_row(log_data)
                     for k, v in stats.iteritems():
                         print(k + ": " + " " * (40 - len(k)) + str(v))

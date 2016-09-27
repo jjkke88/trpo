@@ -13,7 +13,7 @@ class Storage(object):
         self.obs, actions, rewards, action_dists = [], [], [], []
         ob = self.env.reset()
         episode_steps = 0
-        for _ in xrange(pms.max_pathlength):
+        for _ in xrange(pms.max_path_length):
             action, action_dist, ob = self.agent.act(ob)
             self.obs.append(ob)
             actions.append(action)

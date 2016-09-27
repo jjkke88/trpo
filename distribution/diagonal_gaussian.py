@@ -72,9 +72,9 @@ class DiagonalGaussian(object):
                0.5 * np.sum(np.square(zs), axis=-1) - \
                0.5 * means.shape[-1] * np.log(2 * np.pi)
 
-    def entropy(self, dist_infos):
-        log_stds = [dist_info["log_std"] for dist_info in dist_infos]
-        return np.sum(log_stds + np.log(np.sqrt(2 * np.pi * np.e)), axis=-1)
+    def entropy(self, dist_info):
+        log_stds = dist_info["log_std"]
+        return tf.reduce_sum(log_stds + np.log(np.sqrt(2 * np.pi * np.e)))
 
     @property
     def dist_info_keys(self):

@@ -1,7 +1,14 @@
+# for image
 dims = (100, 100)
-timesteps_per_batch = 1000
+obs_height = 100
+obs_width = 100
+obs_channel = 1
+history_number = 2
+
+# for trainning
+max_iter_number = 10000
 paths_number = 8
-max_pathlength = 500
+max_path_length = 30
 max_kl = 0.01
 gae_lambda = 1.0
 subsample_factor = 0.8
@@ -9,20 +16,24 @@ cg_damping = 0.1
 discount = 0.99
 cg_iters = 10
 deviation = 0.1
-PI = 3.1415926
-render = False
-train_flag = True
-# dims of observation, also is the input dims of action network
-obs_shape = 3
-action_shape = 1
-min_a = -2.0
-max_a = 2.0
+render = True
+train_flag = False
+iter_num_per_train = 1
+checkpoint_file = "checkpoint/iter3516.ckpt"
+record_movie = False
+
+# for environment
+
+environment_name = "Pendulum-v0"
+
+# for continous action
 min_std = 1e-6
 center_adv = True
 positive_adv = False
 use_std_network = False
 std = 1.1
-iter_num_per_train = 1
-checkpoint_file = "checkpoint/iter1168.ckpt"
-environment_name = "Pendulum-v0"
-record_movie = False
+obs_shape = 3
+action_shape = 1
+min_a = -2.0
+max_a = 2.0
+
