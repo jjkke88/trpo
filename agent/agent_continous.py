@@ -1,4 +1,5 @@
 from utils import *
+import gym
 import numpy as np
 import random
 import tensorflow as tf
@@ -13,7 +14,7 @@ import parameters as pms
 import krylov
 from logger.logger import Logger
 from distribution.diagonal_gaussian import DiagonalGaussian
-from baseline.baseline_lstsq import Baseline
+from baseline.baseline_tensorflow import Baseline
 
 seed = 1
 np.random.seed(seed)
@@ -36,7 +37,7 @@ class TRPOAgent(object):
         self.end_count = 0
         self.paths = []
         self.train = True
-        self.baseline = Baseline()
+        self.baseline = Baseline(self.session)
         self.storage = Storage(self, self.env, self.baseline)
         self.distribution = DiagonalGaussian(pms.action_shape)
         self.init_network()
@@ -267,8 +268,16 @@ class TRPOAgent(object):
 
     def test(self, model_name):
         self.load_model(model_name)
-        for i in range(50):
-            self.storage.get_single_path()
+        if pms.record_movie:
+            for i in range(100):
+                self.storage.get_single_path()
+            self.env.env.monitor.close()
+            if pms.upload_to_gym:
+                gym.upload("log/trpo",algorithm_id='alg_8BgjkAsQRNiWu11xAhS4Hg', api_key='sk_IJhy3b2QkqL3LWzgBXoVA')
+        else:
+            for i in range(50):
+                self.storage.get_single_path()
+
 
     def save_model(self, model_name):
         self.saver.save(self.session, "checkpoint/" + model_name + ".ckpt")
