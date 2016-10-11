@@ -15,8 +15,6 @@ class Baseline(object):
         self.y = tf.placeholder(tf.float32 , shape=[None] , name="y")
         self.net = (pt.wrap(self.x).
                     fully_connected(64 , activation_fn=tf.nn.relu).
-                    fully_connected(64 , activation_fn=tf.nn.relu).
-                    fully_connected(64 , activation_fn=tf.nn.relu).
                     fully_connected(1))
         self.net = tf.reshape(self.net , (-1 ,))
         self.l2 = (self.net - self.y) * (self.net - self.y)
@@ -24,11 +22,10 @@ class Baseline(object):
         self.session.run(tf.initialize_all_variables())
 
     def _features(self, path):
-        o = path["observations"].astype('float32')
-        o = o.reshape(o.shape[0], -1)
+        obs = path["observations"]
         l = len(path["rewards"])
-        al = np.arange(l).reshape(-1, 1) / 250.0
-        ret = np.concatenate([o, al, np.ones((l, 1))], axis=1)
+        al = np.arange(l).reshape(-1, 1) / 10.0
+        ret = np.concatenate([obs, al, np.ones((l, 1))], axis=1)
         return ret
 
     def fit(self , paths):

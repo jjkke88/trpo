@@ -9,7 +9,7 @@ history_number = 2
 jobs = 3
 max_iter_number = 10000
 paths_number = 8
-max_path_length = 30
+max_path_length = 199
 max_kl = 0.01
 gae_lambda = 1.0
 subsample_factor = 0.8
@@ -22,6 +22,7 @@ train_flag = False
 iter_num_per_train = 1
 checkpoint_file = "checkpoint/iter0.ckpt"
 record_movie = False
+upload_to_gym = False
 
 # for environment
 

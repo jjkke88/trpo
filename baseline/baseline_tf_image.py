@@ -14,7 +14,6 @@ class BaselineTfImage(object):
         self.x = tf.placeholder(tf.float32, shape=[None, shape[1], shape[2], shape[3]], name="x")
         self.y = tf.placeholder(tf.float32, shape=[None], name="y")
         self.net = (pt.wrap(self.x).
-                    reshape((None, pms.obs_height, pms.obs_width, pms.obs_channel)).
                     conv2d(4, 16, stride=2, batch_normalize=True).
                     conv2d(4, 16, stride=2, batch_normalize=True).
                     flatten().
@@ -36,7 +35,7 @@ class BaselineTfImage(object):
         if self.net is None:
             self.create_net(featmat.shape)
         returns = np.concatenate([path["returns"] for path in paths])
-        for _ in range(50):
+        for _ in range(100):
             self.session.run(self.train, {self.x: featmat, self.y: returns})
 
     def predict(self, path):

@@ -7,7 +7,7 @@ trust region policy optimitztion base on gym and tensorflow
 
 # constructure for code
 <ul>
-<li>baseline:baseline estimation of baseline function  <img src="http://www.forkosh.com/mathtex.cgi?V_\pi">, note that baseline_tensorflow.py have some problems and can not be used now</li>
+<li>baseline:baseline estimation of baseline function  <img src="http://www.forkosh.com/mathtex.cgi?V_\pi"> </li>
 <li>checkpoint:folder to store model file, can not be delete or will cause some error</li>
 <li>distribution:distribution base class, it can be used to calculate probability of distributions, for example Gaussian.</li>
 <li>logger:have a Logger class for log data to .csv file</li>
