@@ -13,11 +13,12 @@ from storage.storage import Storage
 import parameters as pms
 from distribution.diagonal_category import DiagonalCategory
 from baseline.baseline_lstsq import Baseline
-
+import gym
+from environment import Environment
 
 class TRPOAgent(object):
-    def __init__(self, env):
-        self.env = env
+    def __init__(self):
+        self.env = env = Environment(gym.make(pms.environment_name))
         # if not isinstance(env.observation_space, Box) or \
         #    not isinstance(env.action_space, Discrete):
         #     print("Incompatible spaces.")
