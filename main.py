@@ -6,7 +6,7 @@ from gym.spaces import Discrete, Box
 import tempfile
 import sys
 from environment import Environment
-from agent.agent_continous import TRPOAgent
+from agent.agent_continous_rnn import TRPOAgent
 import parameters as pms
 
 training_dir = tempfile.mkdtemp()

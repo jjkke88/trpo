@@ -54,23 +54,36 @@ class TRPOAgent(object):
 
     def init_network(self):
         self.obs = obs = tf.placeholder(
-            dtype, shape=[None, pms.obs_shape], name="obs")
-        self.action_n = tf.placeholder(dtype, shape=[None, pms.action_shape], name="action")
-        self.advant = tf.placeholder(dtype, shape=[None], name="advant")
-        self.old_dist_means_n = tf.placeholder(dtype, shape=[None, pms.action_shape],
+            dtype, shape=[pms.batch_size, pms.obs_shape], name="obs")
+        self.action_n = tf.placeholder(dtype, shape=[pms.batch_size, pms.action_shape], name="action")
+        self.advant = tf.placeholder(dtype, shape=[pms.batch_size], name="advant")
+        self.old_dist_means_n = tf.placeholder(dtype, shape=[pms.batch_size, pms.action_shape],
                                                name="oldaction_dist_means")
-        self.old_dist_logstds_n = tf.placeholder(dtype, shape=[None, pms.action_shape],
+        self.old_dist_logstds_n = tf.placeholder(dtype, shape=[pms.batch_size, pms.action_shape],
                                                  name="oldaction_dist_logstds")
+
 
         # Create mean network.
         # self.fp_mean1, weight_fp_mean1, bias_fp_mean1 = linear(self.obs, 32, activation_fn=tf.nn.tanh, name="fp_mean1")
         # self.fp_mean2, weight_fp_mean2, bias_fp_mean2 = linear(self.fp_mean1, 32, activation_fn=tf.nn.tanh, name="fp_mean2")
         # self.action_dist_means_n, weight_action_dist_means_n, bias_action_dist_means_n = linear(self.fp_mean2, pms.action_shape, name="action_dist_means")
-        self.action_dist_means_n = (pt.wrap(self.obs).
-                                    fully_connected(16, activation_fn=tf.nn.tanh,
-                                                    init=tf.random_normal_initializer(stddev=1.0), bias=False).
-                                    fully_connected(16, activation_fn=tf.nn.tanh,
-                                                    init=tf.random_normal_initializer(stddev=1.0), bias=False).
+        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(3 , forget_bias=0.0 , state_is_tuple=True)
+        lstm_cell = tf.nn.rnn_cell.DropoutWrapper(
+            lstm_cell , output_keep_prob=0.5)
+        rnn = tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * 3 , state_is_tuple=True)
+        # rnn = tf.nn.rnn_cell.BasicRNNCell(3)
+        self.initial_state = state =  rnn.zero_state(pms.batch_size, tf.float32)
+        # output , state = tf.nn.dynamic_rnn(rnn, self.obs)
+        output, state = rnn(self.obs, state)
+
+        print
+        self.action_dist_means_n = (pt.wrap(output).
+                                    fully_connected(16 , activation_fn=tf.nn.tanh ,
+                                                    init=tf.random_normal_initializer(stddev=1.0) ,
+                                                    bias=False).
+                                    fully_connected(16 , activation_fn=tf.nn.tanh ,
+                                                    init=tf.random_normal_initializer(stddev=1.0) ,
+                                                    bias=False).
                                     fully_connected(pms.action_shape, init=tf.random_normal_initializer(stddev=1.0),
                                                     bias=False))
 
@@ -88,7 +101,7 @@ class TRPOAgent(object):
                                           fully_connected(pms.action_shape,
                                                           init=tf.random_normal_initializer(stddev=1.0), bias=False))
         else:
-            self.action_dist_logstds_n = tf.placeholder(dtype, shape=[None, pms.action_shape], name="logstd")
+            self.action_dist_logstds_n = tf.placeholder(dtype, shape=[pms.batch_size, pms.action_shape], name="logstd")
         if pms.min_std is not None:
             log_std_var = tf.maximum(self.action_dist_logstds_n, np.log(pms.min_std))
         self.action_dist_stds_n = tf.exp(log_std_var)
@@ -149,6 +162,10 @@ class TRPOAgent(object):
 
     def get_action(self, obs, *args):
         obs = np.expand_dims(obs, 0)
+        temp = np.zeros((pms.batch_size, obs.shape[1]))
+        for i in range(pms.batch_size):
+            temp[i-1]=obs[0]
+        obs = temp
         # action_dist_logstd = np.expand_dims([np.log(pms.std)], 0)
         if pms.use_std_network:
             action_dist_means_n, action_dist_logstds_n = self.session.run(
@@ -183,14 +200,14 @@ class TRPOAgent(object):
             self.get_samples(pms.paths_number)
             paths = self.storage.get_paths()  # get_paths
             # Computing returns and estimating advantage function.
-            sample_data = self.storage.process_paths(paths)
+            sample_data = self.storage.process_paths([paths[0]])
 
             agent_infos = sample_data["agent_infos"]
             obs_n = sample_data["observations"]
             action_n = sample_data["actions"]
             advant_n = sample_data["advantages"]
             n_samples = len(obs_n)
-            inds = np.random.choice(n_samples, math.floor(n_samples * pms.subsample_factor), replace=False)
+            inds = np.array(range(0, n_samples))
             obs_n = obs_n[inds]
             action_n = action_n[inds]
             advant_n = advant_n[inds]

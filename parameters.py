@@ -6,10 +6,12 @@ obs_channel = 1
 history_number = 2
 
 # for trainning
-jobs = 3
+jobs = 4
+
 max_iter_number = 10000
-paths_number = 8
+paths_number = 1
 max_path_length = 199
+batch_size = max_path_length
 max_kl = 0.01
 gae_lambda = 1.0
 subsample_factor = 0.8
@@ -20,7 +22,7 @@ deviation = 0.1
 render = True
 train_flag = False
 iter_num_per_train = 1
-checkpoint_file = "checkpoint/iter0.ckpt"
+checkpoint_file = "checkpoint/iter240865.ckpt"
 record_movie = False
 upload_to_gym = False
 

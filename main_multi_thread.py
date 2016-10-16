@@ -82,10 +82,17 @@ class MasterContinous(object):
             job.join()
 
     def test(self):
-        self.jobs[0].test(pms.checkpoint_file)
+        self.load_model(pms.checkpoint_file)
+        self.jobs[0].test()
 
     def save_model(self, model_name):
         self.saver.save(self.session, "checkpoint/" + model_name + ".ckpt")
+
+    def load_model(self , model_name):
+        try:
+            self.saver.restore(self.session , model_name)
+        except:
+            print "load model %s fail" % (model_name)
 
 def signal_handler():
     sys.exit(0)
