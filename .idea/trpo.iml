@@ -2,7 +2,11 @@
 <module type="PYTHON_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$" />
+<<<<<<< HEAD
     <orderEntry type="jdk" jdkName="Python 2.7.6 virtualenv at ~/tensorflow10" jdkType="Python SDK" />
+=======
+    <orderEntry type="jdk" jdkName="Python 2.7.6 (/usr/bin/python2.7)" jdkType="Python SDK" />
+>>>>>>> 0356c098856467ec6db97061e73187c6a18a25a7
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>
