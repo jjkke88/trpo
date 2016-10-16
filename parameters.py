@@ -6,7 +6,7 @@ obs_channel = 1
 history_number = 2
 
 # for trainning
-jobs = 3
+jobs = 2
 max_iter_number = 10000
 paths_number = 8
 max_path_length = 199
