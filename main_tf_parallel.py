@@ -39,15 +39,17 @@ def main(_):
             worker_device="/job:worker/task:%d/cpu:%d" % (FLAGS.task_index, FLAGS.task_index),
             cluster=cluster)):
             agent = TRPOAgentParallel(ps_device="/job:ps/task:0", cluster=cluster)
-            global_step = tf.Variable(0 , trainable=False , name='step')
+            # global_step = tf.Variable(0 , trainable=False , name='step')
         saver = tf.train.Saver(max_to_keep=10)
         init_op = tf.initialize_all_variables()
+        summary_op = tf.merge_all_summaries()
         # Create a "supervisor", which oversees the training process.
         sv = tf.train.Supervisor(is_chief=(FLAGS.task_index == 0),
                              logdir="checkpoint",
                              init_op=init_op,
-                             global_step=global_step,
-                             saver=saver,
+                             global_step=agent.global_step,
+                             saver=agent.saver,
+                             summary_op=summary_op,
                              save_model_secs=60)
 
         # The supervisor takes care of session initialization, restoring from
@@ -56,6 +58,7 @@ def main(_):
             agent.session = sess
             agent.gf.session = sess
             agent.sff.session =sess
+            agent.supervisor = sv
             if pms.train_flag:
                 agent.learn()
             elif FLAGS.task_index == 0:

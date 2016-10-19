@@ -18,10 +18,10 @@ cg_damping = 0.1
 discount = 0.99
 cg_iters = 10
 deviation = 0.1
-render = True
-train_flag = False
+render = False
+train_flag = True
 iter_num_per_train = 1
-checkpoint_file = "checkpoint/model.ckpt-0"
+checkpoint_file = "checkpoint/iter2360.ckpt"
 record_movie = False
 upload_to_gym = False
 

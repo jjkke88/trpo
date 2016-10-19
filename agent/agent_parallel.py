@@ -41,6 +41,7 @@ class TRPOAgentParallel(object):
         self.storage = Storage(self, self.env, self.baseline)
         self.distribution = DiagonalGaussian(pms.action_shape)
         self.init_network()
+        self.saver = tf.train.Saver(max_to_keep=10)
         if pms.train_flag:
             self.init_logger()
 
@@ -48,7 +49,7 @@ class TRPOAgentParallel(object):
         head = ["average_episode_std", "sum steps episode number" "total number of episodes", "Average sum of rewards per episode",
                 "KL between old and new distribution", "Surrogate loss", "Surrogate loss prev", "ds", "entropy",
                 "mean_advant"]
-        self.logger = Logger(head)
+        # self.logger = Logger(head)
 
     def init_network(self):
         self.obs = obs = tf.placeholder(
@@ -65,6 +66,7 @@ class TRPOAgentParallel(object):
         # self.fp_mean2, weight_fp_mean2, bias_fp_mean2 = linear(self.fp_mean1, 32, activation_fn=tf.nn.tanh, name="fp_mean2")
         # self.action_dist_means_n, weight_action_dist_means_n, bias_action_dist_means_n = linear(self.fp_mean2, pms.action_shape, name="action_dist_means")
         with tf.device(tf.train.replica_device_setter(worker_device=self.ps_device , cluster=self.cluster)):
+            self.global_step = tf.Variable(0 , trainable=False, name='step')
             self.action_dist_means_n = (pt.wrap(self.obs).
                                         fully_connected(16, activation_fn=tf.nn.tanh,
                                                         init=tf.random_normal_initializer(stddev=1.0), bias=False).
@@ -90,8 +92,8 @@ class TRPOAgentParallel(object):
                 self.action_dist_logstds_n = tf.placeholder(dtype, shape=[None, pms.action_shape], name="logstd")
             if pms.min_std is not None:
                 log_std_var = tf.maximum(self.action_dist_logstds_n, np.log(pms.min_std))
+        self.step_inc_op = self.global_step.assign_add(1, use_locking=True)
         self.action_dist_stds_n = tf.exp(log_std_var)
-
         self.old_dist_info_vars = dict(mean=self.old_dist_means_n, log_std=self.old_dist_logstds_n)
         self.new_dist_info_vars = dict(mean=self.action_dist_means_n, log_std=self.action_dist_logstds_n)
         self.likehood_action_dist = self.distribution.log_likelihood_sym(self.action_n, self.new_dist_info_vars)
@@ -113,9 +115,6 @@ class TRPOAgentParallel(object):
 
         # KL divergence where first arg is fixed
         # replace old->tf.stop_gradient from previous kl
-        kl_firstfixed = kl_sym_gradient(self.old_dist_means_n, self.old_dist_logstds_n, self.action_dist_means_n,
-                                        self.action_dist_logstds_n)
-
         grads = tf.gradients(kl, var_list)
         self.flat_tangent = tf.placeholder(dtype, shape=[None])
         shapes = map(var_shape, var_list)
@@ -136,6 +135,7 @@ class TRPOAgentParallel(object):
             self.storage.get_single_path()
 
     def get_action(self, obs, *args):
+        # print obs
         obs = np.expand_dims(obs, 0)
         # action_dist_logstd = np.expand_dims([np.log(pms.std)], 0)
         if pms.use_std_network:
@@ -193,7 +193,8 @@ class TRPOAgentParallel(object):
 
             episoderewards = np.array([path["rewards"].sum() for path in paths])
             average_episode_std = np.mean(np.exp(action_dist_logstds_n))
-
+            # if self.supervisor.should_stop():
+            #     break
             # print "\n********** Iteration %i ************" % i
             for iter_num_per_train in range(pms.iter_num_per_train):
                 # if not self.train:
@@ -201,6 +202,7 @@ class TRPOAgentParallel(object):
                 #     self.end_count += 1
                 #     if self.end_count > 100:
                 #         break
+
                 if self.train:
                     thprev = self.gf()  # get theta_old
 
@@ -233,6 +235,7 @@ class TRPOAgentParallel(object):
                     stats["sum steps of episodes"] = sample_data["sum_episode_steps"]
                     stats["Total number of episodes"] = numeptotal
                     stats["Average sum of rewards per episode"] = episoderewards.mean()
+                    # tf.scalar_summary("mean_episode_reward", tf.Variable(episoderewards.mean()))
                     # stats["Entropy"] = entropy
                     # exp = explained_variance(np.array(baseline_n), np.array(returns_n))
                     # stats["Baseline explained"] = exp
@@ -245,9 +248,13 @@ class TRPOAgentParallel(object):
                     log_data = [average_episode_std, len(episoderewards), numeptotal, episoderewards.mean(), kloldnew, surrafter, surr_prev,
                                 surrafter - surr_prev,
                                 ent_prev, mean_advant]
-                    self.logger.log_row(log_data)
+                    # self.logger.log_row(log_data)
                     if i%20==0:
+                        # self.save_model("iter" + str(i))
                         print episoderewards.mean()
+                        print self.global_step.eval(self.session)
+
+                    self.session.run(self.step_inc_op)
                     # for k, v in stats.iteritems():
                     #     print(k + ": " + " " * (40 - len(k)) + str(v))
                         # if entropy != entropy:
