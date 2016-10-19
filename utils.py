@@ -69,7 +69,7 @@ class SetFromFlat(object):
                         theta[
                             start:start +
                             size],
-                        shape)))
+                        shape), use_locking=True))
             start += size
         self.op = tf.group(*assigns)
 

@@ -38,8 +38,8 @@ def main(_):
         with tf.device(tf.train.replica_device_setter(
             worker_device="/job:worker/task:%d/cpu:%d" % (FLAGS.task_index, FLAGS.task_index),
             cluster=cluster)):
-            agent = TRPOAgentParallel()
-        global_step = tf.Variable(0 , trainable=False , name='step')
+            agent = TRPOAgentParallel(ps_device="/job:ps/task:0", cluster=cluster)
+            global_step = tf.Variable(0 , trainable=False , name='step')
         saver = tf.train.Saver(max_to_keep=10)
         init_op = tf.initialize_all_variables()
         # Create a "supervisor", which oversees the training process.

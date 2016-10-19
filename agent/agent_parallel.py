@@ -23,7 +23,9 @@ tf.set_random_seed(seed)
 
 class TRPOAgentParallel(object):
 
-    def __init__(self):
+    def __init__(self, ps_device=None, cluster=None):
+        self.ps_device = ps_device
+        self.cluster = cluster
         self.env = env = Environment(gym.make(pms.environment_name))
         # if not isinstance(env.observation_space, Box) or \
         #    not isinstance(env.action_space, Discrete):
@@ -62,31 +64,32 @@ class TRPOAgentParallel(object):
         # self.fp_mean1, weight_fp_mean1, bias_fp_mean1 = linear(self.obs, 32, activation_fn=tf.nn.tanh, name="fp_mean1")
         # self.fp_mean2, weight_fp_mean2, bias_fp_mean2 = linear(self.fp_mean1, 32, activation_fn=tf.nn.tanh, name="fp_mean2")
         # self.action_dist_means_n, weight_action_dist_means_n, bias_action_dist_means_n = linear(self.fp_mean2, pms.action_shape, name="action_dist_means")
-        self.action_dist_means_n = (pt.wrap(self.obs).
-                                    fully_connected(16, activation_fn=tf.nn.tanh,
-                                                    init=tf.random_normal_initializer(stddev=1.0), bias=False).
-                                    fully_connected(16, activation_fn=tf.nn.tanh,
-                                                    init=tf.random_normal_initializer(stddev=1.0), bias=False).
-                                    fully_connected(pms.action_shape, init=tf.random_normal_initializer(stddev=1.0),
-                                                    bias=False))
+        with tf.device(tf.train.replica_device_setter(worker_device=self.ps_device , cluster=self.cluster)):
+            self.action_dist_means_n = (pt.wrap(self.obs).
+                                        fully_connected(16, activation_fn=tf.nn.tanh,
+                                                        init=tf.random_normal_initializer(stddev=1.0), bias=False).
+                                        fully_connected(16, activation_fn=tf.nn.tanh,
+                                                        init=tf.random_normal_initializer(stddev=1.0), bias=False).
+                                        fully_connected(pms.action_shape, init=tf.random_normal_initializer(stddev=1.0),
+                                                        bias=False))
 
-        self.N = tf.shape(obs)[0]
-        Nf = tf.cast(self.N, dtype)
-        # Create std network.
-        if pms.use_std_network:
-            self.action_dist_logstds_n = (pt.wrap(self.obs).
-                                          fully_connected(16, activation_fn=tf.nn.tanh,
-                                                          init=tf.random_normal_initializer(stddev=1.0),
-                                                          bias=False).
-                                          fully_connected(16, activation_fn=tf.nn.tanh,
-                                                          init=tf.random_normal_initializer(stddev=1.0),
-                                                          bias=False).
-                                          fully_connected(pms.action_shape,
-                                                          init=tf.random_normal_initializer(stddev=1.0), bias=False))
-        else:
-            self.action_dist_logstds_n = tf.placeholder(dtype, shape=[None, pms.action_shape], name="logstd")
-        if pms.min_std is not None:
-            log_std_var = tf.maximum(self.action_dist_logstds_n, np.log(pms.min_std))
+            self.N = tf.shape(obs)[0]
+            Nf = tf.cast(self.N, dtype)
+            # Create std network.
+            if pms.use_std_network:
+                self.action_dist_logstds_n = (pt.wrap(self.obs).
+                                              fully_connected(16, activation_fn=tf.nn.tanh,
+                                                              init=tf.random_normal_initializer(stddev=1.0),
+                                                              bias=False).
+                                              fully_connected(16, activation_fn=tf.nn.tanh,
+                                                              init=tf.random_normal_initializer(stddev=1.0),
+                                                              bias=False).
+                                              fully_connected(pms.action_shape,
+                                                              init=tf.random_normal_initializer(stddev=1.0), bias=False))
+            else:
+                self.action_dist_logstds_n = tf.placeholder(dtype, shape=[None, pms.action_shape], name="logstd")
+            if pms.min_std is not None:
+                log_std_var = tf.maximum(self.action_dist_logstds_n, np.log(pms.min_std))
         self.action_dist_stds_n = tf.exp(log_std_var)
 
         self.old_dist_info_vars = dict(mean=self.old_dist_means_n, log_std=self.old_dist_logstds_n)
