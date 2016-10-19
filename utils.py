@@ -3,6 +3,9 @@ import tensorflow as tf
 import random
 import scipy.signal
 import prettytensor as pt
+import parameters as pms
+import threading
+from tensorflow.contrib.layers.python.layers import initializers
 
 seed = 1
 random.seed(seed)
@@ -15,87 +18,8 @@ def discount(x, gamma):
     assert x.ndim >= 1
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
-def rollout(env, agent, max_pathlength, n_timesteps):
-    paths = []
-    timesteps_sofar = 0
-    while timesteps_sofar < n_timesteps:
-        obs, actions, rewards, action_dists = [], [], [], []
-        ob = env.reset()
-        agent.prev_action *= 0.0
-        agent.prev_obs *= 0.0
-        episode_steps = 0
-        for _ in xrange(max_pathlength):
-            action, action_dist, ob = agent.act(ob)
-            obs.append(ob)
-            actions.append(action)
-            action_dists.append(action_dist)
-            res = env.step(action)
-            env.render()
-            ob = res[0]
-            rewards.append(res[1])
-            episode_steps += 1
-            if res[2]:
-                break
-        path = {"obs": np.concatenate(np.expand_dims(obs, 0)),
-                "action_dists": np.concatenate(action_dists),
-                "rewards": np.array(rewards),
-                "actions": np.array(actions)}
-        paths.append(path)
-        agent.prev_action *= 0.0
-        agent.prev_obs *= 0.0
-        timesteps_sofar += episode_steps
-    return paths
 
 
-class VF(object):
-    coeffs = None
-
-    def __init__(self, session, type="origin"):
-        self.net = None
-        self.session = session
-        self.type = type
-
-    def create_net(self, shape):
-        print(shape)
-        self.x = tf.placeholder(tf.float32, shape=[None, shape], name="x")
-        self.y = tf.placeholder(tf.float32, shape=[None], name="y")
-        self.net = (pt.wrap(self.x).
-                    fully_connected(64, activation_fn=tf.nn.relu).
-                    fully_connected(64, activation_fn=tf.nn.relu).
-                    fully_connected(1))
-        self.net = tf.reshape(self.net, (-1, ))
-        l2 = (self.net - self.y) * (self.net - self.y)
-        self.train = tf.train.AdamOptimizer().minimize(l2)
-        self.session.run(tf.initialize_all_variables())
-
-    def _features(self, path):
-        if self.type == "origin":
-            o = path["obs"].astype('float32')
-            o = o.reshape(o.shape[0], -1)
-            act = path["action_dists"].astype('float32')
-            l = len(path["rewards"])
-            al = np.arange(l).reshape(-1, 1) / 10.0
-            # up to down stack obs, action_dst, al, np.ones((l,1))
-            ret = np.concatenate([o, act, al, np.ones((l, 1))], axis=1)
-        elif self.type == "gray_image":
-            ret = path["obs"].astype('float32')
-        return ret
-
-
-    def fit(self, paths):
-        featmat = np.concatenate([self._features(path) for path in paths])
-        if self.net is None:
-            self.create_net(featmat.shape[1])
-        returns = np.concatenate([path["returns"] for path in paths])
-        for _ in range(50):
-            self.session.run(self.train, {self.x: featmat, self.y: returns})
-
-    def predict(self, path):
-        if self.net is None:
-            return np.zeros(len(path["rewards"])) 
-        else:
-            ret = self.session.run(self.net, {self.x: self._features(path)})
-            return np.reshape(ret, (ret.shape[0], ))
 
 
 def cat_sample(prob_nk):
@@ -124,12 +48,11 @@ def numel(x):
 
 def flatgrad(loss, var_list):
     grads = tf.gradients(loss, var_list)
-    return tf.concat(0, [tf.reshape(grad, [numel(v)])
-                         for (v, grad) in zip(var_list, grads)])
+    return tf.concat(0, [tf.reshape(grad, [np.prod(var_shape(v))])
+                         for (grad, v) in zip( grads, var_list)])
 
-
+# set theta
 class SetFromFlat(object):
-
     def __init__(self, session, var_list):
         self.session = session
         assigns = []
@@ -154,7 +77,7 @@ class SetFromFlat(object):
     def __call__(self, theta):
         self.session.run(self.op, feed_dict={self.theta: theta})
 
-
+# get theta
 class GetFlat(object):
 
     def __init__(self, session, var_list):
@@ -166,6 +89,7 @@ class GetFlat(object):
 
 
 def slice_2d(x, inds0, inds1):
+    # assume that a path have 1000 vector, then ncols=action dims, inds0=1000,inds1=
     inds0 = tf.cast(inds0, tf.int64)
     inds1 = tf.cast(inds1, tf.int64)
     shape = tf.cast(tf.shape(x), tf.int64)
@@ -177,35 +101,19 @@ def slice_2d(x, inds0, inds1):
 def linesearch(f, x, fullstep, expected_improve_rate):
     accept_ratio = .1
     max_backtracks = 10
-    fval = f(x)
-    for (_n_backtracks, stepfrac) in enumerate(.5**np.arange(max_backtracks)):
-        xnew = x + stepfrac * fullstep
-        newfval = f(xnew)
-        actual_improve = fval - newfval
-        expected_improve = expected_improve_rate * stepfrac
-        ratio = actual_improve / expected_improve
-        if ratio > accept_ratio and actual_improve > 0:
+    fval, old_kl, entropy = f(x)
+    for (_n_backtracks, stepfrac) in enumerate(.3**np.arange(max_backtracks)):
+        xnew = x - stepfrac * fullstep
+        newfval, new_kl, new_ent= f(xnew)
+        # actual_improve = newfval - fval # minimize target object
+        # expected_improve = expected_improve_rate * stepfrac
+        # ratio = actual_improve / expected_improve
+        # if ratio > accept_ratio and actual_improve > 0:
+        #     return xnew
+        if newfval<fval and new_kl<=pms.max_kl:
             return xnew
     return x
 
-
-def conjugate_gradient(f_Ax, b, cg_iters=10, residual_tol=1e-10):
-    p = b.copy()
-    r = b.copy()
-    x = np.zeros_like(b)
-    rdotr = r.dot(r)
-    for i in xrange(cg_iters):
-        z = f_Ax(p)
-        v = rdotr / p.dot(z)
-        x += v * p
-        r -= v * z
-        newrdotr = r.dot(r)
-        mu = newrdotr / rdotr
-        p = r + mu * p
-        rdotr = newrdotr
-        if rdotr < residual_tol:
-            break
-    return x
 
 class dict2(dict):
     def __init__(self, **kwargs):
@@ -216,3 +124,38 @@ def explained_variance(ypred, y):
     assert y.ndim == 1 and ypred.ndim == 1
     vary = np.var(y)
     return np.nan if vary==0 else 1 - np.var(y-ypred)/vary
+
+def countMatrixMultiply(matrix):
+    result_end = []
+    for j in matrix:
+        result = 1.0
+        for i in j:
+            result *= i
+        result_end.append(result)
+    return np.array(result_end)
+
+def kl_sym(old_dist_means, old_dist_logstds, new_dist_means, new_dist_logstds):
+    old_std = tf.exp(old_dist_logstds)
+    new_std = tf.exp(new_dist_logstds)
+    # means: (N*A)
+    # std: (N*A)
+    # formula:
+    # { (\mu_1 - \mu_2)^2 + \sigma_1^2 - \sigma_2^2 } / (2\sigma_2^2) +
+    # ln(\sigma_2/\sigma_1)
+    numerator = tf.square(old_dist_means - new_dist_means) + \
+                tf.square(old_std) - tf.square(new_std)
+    denominator = 2 * tf.square(new_std) + 1e-8
+    return tf.reduce_sum(
+        numerator / denominator + new_dist_logstds - old_dist_logstds)
+
+def kl_sym_gradient(old_dist_means, old_dist_logstds, new_dist_means, new_dist_logstds):
+    old_std = tf.exp(old_dist_logstds)
+    new_std = tf.exp(new_dist_logstds)
+    numerator = tf.square(tf.stop_gradient(new_dist_means) - new_dist_means) + \
+                tf.square(tf.stop_gradient(new_std)) - tf.square(new_std)
+
+
+    denominator = 2 * tf.square(new_std) + 1e-8
+    return tf.reduce_sum(
+        numerator / denominator + new_dist_logstds - tf.stop_gradient(new_dist_logstds))
+

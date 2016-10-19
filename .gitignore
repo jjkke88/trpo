@@ -1,5 +1,5 @@
 logs_*
 *.pyc
-*.swplog
-log/
+*.swp
 checkpoint/
+log/
