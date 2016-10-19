@@ -56,6 +56,7 @@ class MasterContinous(object):
 
     def init_jobs(self):
         self.jobs = []
+
         for thread_id in xrange(pms.jobs):
             job = TRPOAgentContinousSingleProcess(thread_id, self)
             job.daemon = True
@@ -78,8 +79,11 @@ class MasterContinous(object):
 
     def train(self):
         signal.signal(signal.SIGINT, signal_handler)
+        pool = multiprocessing.Pool(processes=4)
         for job in self.jobs:
-            job.start()
+            pool.apply_async(job)
+        pool.close()
+        pool.join()
 
     def test(self):
         self.jobs[0].test(pms.checkpoint_file)

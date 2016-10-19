@@ -21,7 +21,7 @@ np.random.seed(seed)
 tf.set_random_seed(seed)
 
 
-class TRPOAgent(object):
+class TRPOAgentParallel(object):
 
     def __init__(self):
         self.env = env = Environment(gym.make(pms.environment_name))
@@ -32,8 +32,6 @@ class TRPOAgent(object):
         print("Observation Space", env.observation_space)
         print("Action Space", env.action_space)
         print("Action area, high:%f, low%f" % (env.action_space.high, env.action_space.low))
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1 / 3.0)
-        self.session = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
         self.end_count = 0
         self.paths = []
         self.train = True
@@ -105,9 +103,7 @@ class TRPOAgent(object):
 
         var_list = tf.trainable_variables()
         self.gf = GetFlat(var_list)  # get theta from var_list
-        self.gf.session = self.session
         self.sff = SetFromFlat(var_list)  # set theta from var_List
-        self.sff.session = self.session
         # get g
         self.pg = flatgrad(surr, var_list)
         # get A
@@ -130,8 +126,6 @@ class TRPOAgent(object):
         self.gvp = [tf.reduce_sum(g * t) for (g, t) in zip(grads, tangents)]
         self.fvp = flatgrad(tf.reduce_sum(self.gvp), var_list)  # get kl''*p
 
-        self.session.run(tf.initialize_all_variables())
-        self.saver = tf.train.Saver(max_to_keep=10)
         # self.load_model()
 
     def get_samples(self, path_number):

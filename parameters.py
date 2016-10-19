@@ -7,9 +7,9 @@ history_number = 2
 
 # for trainning
 jobs = 2
-max_iter_number = 10000
+max_iter_number = 20000
 paths_number = 1
-max_path_length = 199
+max_path_length = 250
 batch_size = max_path_length
 max_kl = 0.01
 gae_lambda = 1.0
@@ -18,10 +18,10 @@ cg_damping = 0.1
 discount = 0.99
 cg_iters = 10
 deviation = 0.1
-render = True
-train_flag = False
+render = False
+train_flag = True
 iter_num_per_train = 1
-checkpoint_file = "checkpoint/iter240865.ckpt"
+checkpoint_file = "checkpoint/model.ckpt-0"
 record_movie = False
 upload_to_gym = False
 

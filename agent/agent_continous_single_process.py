@@ -25,13 +25,11 @@ np.random.seed(seed)
 tf.set_random_seed(seed)
 
 
-class TRPOAgentContinousSingleProcess(multiprocessing.Process):
+class TRPOAgentContinousSingleProcess(object):
 
-    def __init__(self, thread_id, master):
-        print "create thread %d"%(thread_id)
+    def __init__(self, thread_id):
+        print "create worker %d"%(thread_id)
         self.thread_id = thread_id
-        multiprocessing.Process.__init__(self)
-        self.master = master
         self.env = env = Environment(gym.make(pms.environment_name))
         # print("Observation Space", env.observation_space)
         # print("Action Space", env.action_space)
@@ -124,7 +122,7 @@ class TRPOAgentContinousSingleProcess(multiprocessing.Process):
 
     def learn(self):
         start_time = time.time()
-        self.sff(self.master.get_parameters())
+
         numeptotal = 0
         while True:
             i = 0
@@ -211,8 +209,6 @@ class TRPOAgentContinousSingleProcess(multiprocessing.Process):
                     #     #     exit(-1)
                     #     # if exp > 0.95:
                     #     #     self.train = False
-
-                    self.master.apply_gradient(theta-thprev)
             if self.thread_id==1:
                 self.master.save_model("iter" + str(i))
                 print episoderewards.mean()

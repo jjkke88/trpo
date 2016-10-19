@@ -53,8 +53,7 @@ def flatgrad(loss, var_list):
 
 # set theta
 class SetFromFlat(object):
-    def __init__(self, session, var_list):
-        self.session = session
+    def __init__(self, var_list):
         assigns = []
         shapes = map(var_shape, var_list)
         total_size = sum(np.prod(shape) for shape in shapes)
@@ -80,8 +79,7 @@ class SetFromFlat(object):
 # get theta
 class GetFlat(object):
 
-    def __init__(self, session, var_list):
-        self.session = session
+    def __init__(self, var_list):
         self.op = tf.concat(0, [tf.reshape(v, [numel(v)]) for v in var_list])
 
     def __call__(self):
