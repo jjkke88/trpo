@@ -100,11 +100,9 @@ class TRPOAgentContinousSingleThread(threading.Thread):
             action_dist_means_n, action_dist_logstds_n = self.session.run(
                 [self.action_dist_means_n, self.action_dist_logstds_n],
                 {self.obs: obs})
-            if pms.train_flag:
-                rnd = np.random.normal(size=action_dist_means_n[0].shape)
-                action = rnd * np.exp(action_dist_logstds_n[0]) + action_dist_means_n[0]
-            else:
-                action = action_dist_means_n[0]
+            rnd = np.random.normal(size=action_dist_means_n[0].shape)
+            action = rnd * np.exp(action_dist_logstds_n[0]) + action_dist_means_n[0]
+            # action = action_dist_means_n[0]
             # action = np.clip(action, pms.min_a, pms.max_a)
             return action, dict(mean=action_dist_means_n[0], log_std=action_dist_logstds_n[0])
         else:
@@ -123,10 +121,13 @@ class TRPOAgentContinousSingleThread(threading.Thread):
 
     def learn(self):
         start_time = time.time()
-        self.sff(self.master.get_parameters())
+
         numeptotal = 0
+        i = 0
+        sum_gradient = 0
         while True:
-            i = 0
+            self.sff(self.master.get_parameters())
+
             # Generating paths.
             # print("Rollout")
             self.get_samples(pms.paths_number)
@@ -210,15 +211,17 @@ class TRPOAgentContinousSingleThread(threading.Thread):
                     #     #     exit(-1)
                     #     # if exp > 0.95:
                     #     #     self.train = False
-
-                    self.master.apply_gradient(theta-thprev)
-            if self.thread_id==1:
-                self.master.save_model("iter" + str(i))
-                print episoderewards.mean()
+                    sum_gradient+=theta-thprev
+                    if i%1==0:
+                        self.master.apply_gradient(sum_gradient)
+                        sum_gradient = 0
+                        if self.thread_id==1:
+                            self.master.save_model("iter" + str(i))
+                            print episoderewards.mean()
             i += 1
 
-    def test(self, model_name):
-        self.load_model(model_name)
+    def test(self):
+        self.sff(self.master.get_parameters())
         for i in range(50):
             self.storage.get_single_path()
 

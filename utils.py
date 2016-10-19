@@ -47,14 +47,13 @@ def numel(x):
 
 
 def flatgrad(loss, var_list):
-    grads = tf.gradients(loss, var_list)
+    grads, _= tf.clip_by_global_norm(tf.gradients(loss, var_list), 1)
     return tf.concat(0, [tf.reshape(grad, [np.prod(var_shape(v))])
                          for (grad, v) in zip( grads, var_list)])
 
 # set theta
 class SetFromFlat(object):
-    def __init__(self, session, var_list):
-        self.session = session
+    def __init__(self, var_list):
         assigns = []
         shapes = map(var_shape, var_list)
         total_size = sum(np.prod(shape) for shape in shapes)
@@ -70,7 +69,7 @@ class SetFromFlat(object):
                         theta[
                             start:start +
                             size],
-                        shape)))
+                        shape), use_locking=True))
             start += size
         self.op = tf.group(*assigns)
 
@@ -80,8 +79,7 @@ class SetFromFlat(object):
 # get theta
 class GetFlat(object):
 
-    def __init__(self, session, var_list):
-        self.session = session
+    def __init__(self, var_list):
         self.op = tf.concat(0, [tf.reshape(v, [numel(v)]) for v in var_list])
 
     def __call__(self):

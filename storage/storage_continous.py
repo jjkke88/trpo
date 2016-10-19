@@ -34,7 +34,7 @@ class Storage(object):
         episode_steps = 0
         while episode_steps< pms.max_path_length:
             a, agent_info = self.agent.get_action(o)
-            next_o, reward, terminal, env_info = self.env.step(2 * np.tanh(a))
+            next_o, reward, terminal, env_info = self.env.step(a)
             observations.append(o)
             rewards.append(np.array([reward]))
             actions.append(a)

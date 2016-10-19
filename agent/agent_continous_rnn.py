@@ -16,6 +16,8 @@ from logger.logger import Logger
 from distribution.diagonal_gaussian import DiagonalGaussian
 from baseline.baseline_lstsq import Baseline
 from environment import Environment
+from network.network_continous import NetworkContinous
+from baseline.baseline_tensorflow import Baseline
 seed = 1
 np.random.seed(seed)
 tf.set_random_seed(seed)
@@ -37,7 +39,7 @@ class TRPOAgent(object):
         self.end_count = 0
         self.paths = []
         self.train = True
-        self.baseline = Baseline()
+        self.baseline = Baseline(self.session)
         self.storage = Storage(self, self.env, self.baseline)
         self.distribution = DiagonalGaussian(pms.action_shape)
         self.init_network()
@@ -52,23 +54,36 @@ class TRPOAgent(object):
 
     def init_network(self):
         self.obs = obs = tf.placeholder(
-            dtype, shape=[None, pms.obs_shape], name="obs")
-        self.action_n = tf.placeholder(dtype, shape=[None, pms.action_shape], name="action")
-        self.advant = tf.placeholder(dtype, shape=[None], name="advant")
-        self.old_dist_means_n = tf.placeholder(dtype, shape=[None, pms.action_shape],
+            dtype, shape=[pms.batch_size, pms.obs_shape], name="obs")
+        self.action_n = tf.placeholder(dtype, shape=[pms.batch_size, pms.action_shape], name="action")
+        self.advant = tf.placeholder(dtype, shape=[pms.batch_size], name="advant")
+        self.old_dist_means_n = tf.placeholder(dtype, shape=[pms.batch_size, pms.action_shape],
                                                name="oldaction_dist_means")
-        self.old_dist_logstds_n = tf.placeholder(dtype, shape=[None, pms.action_shape],
+        self.old_dist_logstds_n = tf.placeholder(dtype, shape=[pms.batch_size, pms.action_shape],
                                                  name="oldaction_dist_logstds")
+
 
         # Create mean network.
         # self.fp_mean1, weight_fp_mean1, bias_fp_mean1 = linear(self.obs, 32, activation_fn=tf.nn.tanh, name="fp_mean1")
         # self.fp_mean2, weight_fp_mean2, bias_fp_mean2 = linear(self.fp_mean1, 32, activation_fn=tf.nn.tanh, name="fp_mean2")
         # self.action_dist_means_n, weight_action_dist_means_n, bias_action_dist_means_n = linear(self.fp_mean2, pms.action_shape, name="action_dist_means")
-        self.action_dist_means_n = (pt.wrap(self.obs).
-                                    fully_connected(16, activation_fn=tf.nn.tanh,
-                                                    init=tf.random_normal_initializer(stddev=1.0), bias=False).
-                                    fully_connected(16, activation_fn=tf.nn.tanh,
-                                                    init=tf.random_normal_initializer(stddev=1.0), bias=False).
+        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(3 , forget_bias=0.0 , state_is_tuple=True)
+        lstm_cell = tf.nn.rnn_cell.DropoutWrapper(
+            lstm_cell , output_keep_prob=0.5)
+        rnn = tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * 3 , state_is_tuple=True)
+        # rnn = tf.nn.rnn_cell.BasicRNNCell(3)
+        self.initial_state = state =  rnn.zero_state(pms.batch_size, tf.float32)
+        # output , state = tf.nn.dynamic_rnn(rnn, self.obs)
+        output, state = rnn(self.obs, state)
+
+        print
+        self.action_dist_means_n = (pt.wrap(output).
+                                    fully_connected(16 , activation_fn=tf.nn.tanh ,
+                                                    init=tf.random_normal_initializer(stddev=1.0) ,
+                                                    bias=False).
+                                    fully_connected(16 , activation_fn=tf.nn.tanh ,
+                                                    init=tf.random_normal_initializer(stddev=1.0) ,
+                                                    bias=False).
                                     fully_connected(pms.action_shape, init=tf.random_normal_initializer(stddev=1.0),
                                                     bias=False))
 
@@ -86,7 +101,7 @@ class TRPOAgent(object):
                                           fully_connected(pms.action_shape,
                                                           init=tf.random_normal_initializer(stddev=1.0), bias=False))
         else:
-            self.action_dist_logstds_n = tf.placeholder(dtype, shape=[None, pms.action_shape], name="logstd")
+            self.action_dist_logstds_n = tf.placeholder(dtype, shape=[pms.batch_size, pms.action_shape], name="logstd")
         if pms.min_std is not None:
             log_std_var = tf.maximum(self.action_dist_logstds_n, np.log(pms.min_std))
         self.action_dist_stds_n = tf.exp(log_std_var)
@@ -104,10 +119,8 @@ class TRPOAgent(object):
         self.losses = [surr, kl, ent]
 
         var_list = tf.trainable_variables()
-        self.gf = GetFlat(var_list)  # get theta from var_list
-        self.gf.session = self.session
-        self.sff = SetFromFlat(var_list)  # set theta from var_List
-        self.sff.session = self.session
+        self.gf = GetFlat(self.session, var_list)  # get theta from var_list
+        self.sff = SetFromFlat(self.session, var_list)  # set theta from var_List
         # get g
         self.pg = flatgrad(surr, var_list)
         # get A
@@ -135,11 +148,24 @@ class TRPOAgent(object):
         # self.load_model()
 
     def get_samples(self, path_number):
-        for i in range(path_number):
+        # thread_pool = []
+        # for i in range(path_number):
+        #     thread_pool.append(Rollout(i , self.storage))
+        #
+        # for thread in thread_pool:
+        #     thread.start()
+        #
+        # for thread in thread_pool:
+        #     thread.join()
+        for i in range(pms.paths_number):
             self.storage.get_single_path()
 
     def get_action(self, obs, *args):
         obs = np.expand_dims(obs, 0)
+        temp = np.zeros((pms.batch_size, obs.shape[1]))
+        for i in range(pms.batch_size):
+            temp[i-1]=obs[0]
+        obs = temp
         # action_dist_logstd = np.expand_dims([np.log(pms.std)], 0)
         if pms.use_std_network:
             action_dist_means_n, action_dist_logstds_n = self.session.run(
@@ -170,17 +196,18 @@ class TRPOAgent(object):
         i = 0
         while True:
             # Generating paths.
+            print("Rollout")
             self.get_samples(pms.paths_number)
             paths = self.storage.get_paths()  # get_paths
             # Computing returns and estimating advantage function.
-            sample_data = self.storage.process_paths(paths)
+            sample_data = self.storage.process_paths([paths[0]])
 
             agent_infos = sample_data["agent_infos"]
             obs_n = sample_data["observations"]
             action_n = sample_data["actions"]
             advant_n = sample_data["advantages"]
             n_samples = len(obs_n)
-            inds = np.random.choice(n_samples, math.floor(n_samples * pms.subsample_factor), replace=False)
+            inds = np.array(range(0, n_samples))
             obs_n = obs_n[inds]
             action_n = action_n[inds]
             advant_n = advant_n[inds]
@@ -197,7 +224,7 @@ class TRPOAgent(object):
             episoderewards = np.array([path["rewards"].sum() for path in paths])
             average_episode_std = np.mean(np.exp(action_dist_logstds_n))
 
-            # print "\n********** Iteration %i ************" % i
+            print "\n********** Iteration %i ************" % i
             for iter_num_per_train in range(pms.iter_num_per_train):
                 # if not self.train:
                 #     print("Episode mean: %f" % episoderewards.mean())
@@ -249,15 +276,13 @@ class TRPOAgent(object):
                                 surrafter - surr_prev,
                                 ent_prev, mean_advant]
                     self.logger.log_row(log_data)
-                    if i%20==0:
-                        print episoderewards.mean()
-                    # for k, v in stats.iteritems():
-                    #     print(k + ": " + " " * (40 - len(k)) + str(v))
+                    for k, v in stats.iteritems():
+                        print(k + ": " + " " * (40 - len(k)) + str(v))
                         # if entropy != entropy:
                         #     exit(-1)
                         # if exp > 0.95:
                         #     self.train = False
-            # self.save_model("iter" + str(i))
+            self.save_model("iter" + str(i))
             i += 1
 
     def test(self, model_name):
