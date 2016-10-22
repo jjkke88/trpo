@@ -15,7 +15,7 @@ import krylov
 from logger.logger import Logger
 from distribution.diagonal_gaussian import DiagonalGaussian
 from baseline.baseline_lstsq import Baseline
-from environment import Environment
+
 seed = 1
 np.random.seed(seed)
 tf.set_random_seed(seed)
@@ -23,8 +23,8 @@ tf.set_random_seed(seed)
 
 class TRPOAgent(object):
 
-    def __init__(self):
-        self.env = env = Environment(gym.make(pms.environment_name))
+    def __init__(self, env):
+        self.env = env
         # if not isinstance(env.observation_space, Box) or \
         #    not isinstance(env.action_space, Discrete):
         #     print("Incompatible spaces.")
@@ -114,10 +114,10 @@ class TRPOAgent(object):
 
         # KL divergence where first arg is fixed
         # replace old->tf.stop_gradient from previous kl
-        kl_firstfixed = kl_sym_gradient(self.old_dist_means_n, self.old_dist_logstds_n, self.action_dist_means_n,
-                                        self.action_dist_logstds_n)
+        kl_firstfixed = self.distribution.kl_sym_firstfixed(dict(mean=self.action_dist_means_n,
+                                        log_std=self.action_dist_logstds_n))
 
-        grads = tf.gradients(kl, var_list)
+        grads = tf.gradients(kl_firstfixed, var_list)
         self.flat_tangent = tf.placeholder(dtype, shape=[None])
         shapes = map(var_shape, var_list)
         start = 0
@@ -132,7 +132,7 @@ class TRPOAgent(object):
 
         self.session.run(tf.initialize_all_variables())
         self.saver = tf.train.Saver(max_to_keep=10)
-        # self.load_model()
+        self.load_model(pms.checkpoint_file)
 
     def get_samples(self, path_number):
         for i in range(path_number):
@@ -170,6 +170,7 @@ class TRPOAgent(object):
         i = 0
         while True:
             # Generating paths.
+            print("Rollout")
             self.get_samples(pms.paths_number)
             paths = self.storage.get_paths()  # get_paths
             # Computing returns and estimating advantage function.
@@ -197,7 +198,7 @@ class TRPOAgent(object):
             episoderewards = np.array([path["rewards"].sum() for path in paths])
             average_episode_std = np.mean(np.exp(action_dist_logstds_n))
 
-            # print "\n********** Iteration %i ************" % i
+            print "\n********** Iteration %i ************" % i
             for iter_num_per_train in range(pms.iter_num_per_train):
                 # if not self.train:
                 #     print("Episode mean: %f" % episoderewards.mean())
@@ -249,15 +250,15 @@ class TRPOAgent(object):
                                 surrafter - surr_prev,
                                 ent_prev, mean_advant]
                     self.logger.log_row(log_data)
-                    if i%20==0:
-                        print episoderewards.mean()
+                    print episoderewards.mean()
                     # for k, v in stats.iteritems():
                     #     print(k + ": " + " " * (40 - len(k)) + str(v))
                         # if entropy != entropy:
                         #     exit(-1)
                         # if exp > 0.95:
                         #     self.train = False
-            # self.save_model("iter" + str(i))
+            if i%10==0:
+                self.save_model("iter_mountaincar" + str(i))
             i += 1
 
     def test(self, model_name):

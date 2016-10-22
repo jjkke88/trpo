@@ -2,6 +2,8 @@
 import tensorflow as tf
 from agent.agent_parallel import TRPOAgentParallel
 import parameters as pms
+import gym
+from environment import Environment
 
 # Flags for defining the tf.train.ClusterSpec
 tf.app.flags.DEFINE_string("ps_hosts", "127.0.0.1:2223",
@@ -36,29 +38,30 @@ def main(_):
     elif FLAGS.job_name == "worker":
         # 将op 挂载到各个本地的worker上
         with tf.device(tf.train.replica_device_setter(
-            worker_device="/job:worker/task:%d/cpu:%d" % (FLAGS.task_index, FLAGS.task_index),
+            worker_device="/job:worker/task:%d" % (FLAGS.task_index),
             cluster=cluster)):
-            agent = TRPOAgentParallel(ps_device="/job:ps/task:0", cluster=cluster)
-            # global_step = tf.Variable(0 , trainable=False , name='step')
-        saver = tf.train.Saver(max_to_keep=10)
-        init_op = tf.initialize_all_variables()
-        summary_op = tf.merge_all_summaries()
+            env = Environment(gym.make(pms.environment_name))
+            agent = TRPOAgentParallel(env, ps_device="/job:ps/task:0", cluster=cluster)
+            saver = tf.train.Saver(max_to_keep=10)
+            init_op = tf.initialize_all_variables()
+            summary_op = tf.merge_all_summaries()
         # Create a "supervisor", which oversees the training process.
         sv = tf.train.Supervisor(is_chief=(FLAGS.task_index == 0),
-                             logdir="checkpoint",
+                             logdir="./checkpoint_parallel",
                              init_op=init_op,
                              global_step=agent.global_step,
-                             saver=agent.saver,
+                             saver=saver,
                              summary_op=summary_op,
-                             save_model_secs=60)
+                             save_model_secs=6)
 
         # The supervisor takes care of session initialization, restoring from
         # a checkpoint, and closing when done or an error occurs.
-        with sv.managed_session(server.target, config=tf.ConfigProto(log_device_placement=True, allow_soft_placement=True)) as sess:
+        with sv.managed_session(server.target) as sess:
             agent.session = sess
             agent.gf.session = sess
             agent.sff.session =sess
             agent.supervisor = sv
+
             if pms.train_flag:
                 agent.learn()
             elif FLAGS.task_index == 0:

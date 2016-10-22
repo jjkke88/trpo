@@ -58,6 +58,14 @@ class DiagonalGaussian(object):
                0.5 * tf.reduce_sum(tf.square(zs), -1) - \
                0.5 *means.get_shape()[-1].value * np.log(2 * np.pi)
 
+    def kl_sym_firstfixed(self, old_dist_info_vars):
+        mu = old_dist_info_vars["mean"]
+        logstd = old_dist_info_vars["log_std"]
+        mu1 , logstd1 = map(tf.stop_gradient , [mu , logstd])
+        mu2 , logstd2 = mu , logstd
+
+        return self.kl_sym(dict(mean=mu1, log_std=logstd1), dict(mean=mu2, log_std=logstd2))
+
     def sample(self, dist_info):
         means = dist_info["mean"]
         log_stds = dist_info["log_std"]

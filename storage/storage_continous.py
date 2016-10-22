@@ -1,7 +1,7 @@
 from utils import *
 import parameters as pms
 import threading
-
+import math
 
 class Storage(object):
     def __init__(self, agent, env, baseline):
@@ -34,18 +34,19 @@ class Storage(object):
         episode_steps = 0
         while episode_steps< pms.max_path_length:
             a, agent_info = self.agent.get_action(o)
-            next_o, reward, terminal, env_info = self.env.step(a)
-            observations.append(o)
-            rewards.append(np.array([reward]))
-            actions.append(a)
-            agent_infos.append([agent_info])
-            env_infos.append([env_info])
-            episode_steps += 1
-            if terminal:
-                break
-            o = next_o
-            if pms.render:
-                self.env.render()
+            if math.isnan(a) is not True:
+                next_o, reward, terminal, env_info = self.env.step(a)
+                observations.append(o)
+                rewards.append(np.array([reward]))
+                actions.append(a)
+                agent_infos.append([agent_info])
+                env_infos.append([env_info])
+                episode_steps += 1
+                if terminal:
+                    break
+                o = next_o
+                if pms.render:
+                    self.env.render()
         self.paths.append(dict(
             observations=np.array(observations),
             actions=np.array(actions),
@@ -84,7 +85,8 @@ class Storage(object):
         env_infos = np.concatenate([path["env_infos"] for path in paths])
         agent_infos = np.concatenate([path["agent_infos"] for path in paths])
         if pms.center_adv:
-            advantages = (advantages - np.mean(advantages)) / (advantages.std() + 1e-8)
+            advantages -= np.mean(advantages)
+            advantages /= (advantages.std() + 1e-8)
 
         # for some unknown reaseon, it can not be used
         # if pms.positive_adv:
@@ -110,7 +112,6 @@ class Storage(object):
             paths=paths,
             sum_episode_steps=sum_episode_steps
         )
-
         self.baseline.fit(paths)
         return samples_data
 

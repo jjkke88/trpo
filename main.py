@@ -9,10 +9,12 @@ from environment import Environment
 from agent.agent_continous import TRPOAgent
 import parameters as pms
 
-training_dir = tempfile.mkdtemp()
-logging.getLogger().setLevel(logging.DEBUG)
-
-agent = TRPOAgent()
+if not os.path.isdir("./checkpoint"):
+    os.makedirs("./checkpoint")
+if not os.path.isdir("./log"):
+    os.makedirs("./log")
+env = Environment(gym.make(pms.environment_name))
+agent = TRPOAgent(env)
 
 if pms.train_flag:
     agent.learn()

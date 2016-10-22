@@ -47,7 +47,7 @@ def numel(x):
 
 
 def flatgrad(loss, var_list):
-    grads, _= tf.clip_by_global_norm(tf.gradients(loss, var_list), 1)
+    grads = tf.gradients(loss, var_list)
     return tf.concat(0, [tf.reshape(grad, [np.prod(var_shape(v))])
                          for (grad, v) in zip( grads, var_list)])
 
@@ -96,6 +96,22 @@ def slice_2d(x, inds0, inds1):
     return tf.gather(x_flat, inds0 * ncols + inds1)
 
 
+# def linesearch(f, x, fullstep, expected_improve_rate):
+#     accept_ratio = .1
+#     max_backtracks = 10
+#     fval, old_kl, entropy = f(x)
+#     for (_n_backtracks, stepfrac) in enumerate(.5**np.arange(max_backtracks)):
+#         xnew = x + stepfrac * fullstep
+#         newfval, new_kl, new_ent= f(xnew)
+#         # actual_improve = newfval - fval # minimize target object
+#         # expected_improve = expected_improve_rate * stepfrac
+#         # ratio = actual_improve / expected_improve
+#         # if ratio > accept_ratio and actual_improve > 0:
+#         #     return xnew
+#         if newfval<fval and new_kl<=pms.max_kl:
+#             return xnew
+#     return x
+
 def linesearch(f, x, fullstep, expected_improve_rate):
     accept_ratio = .1
     max_backtracks = 10
@@ -109,6 +125,7 @@ def linesearch(f, x, fullstep, expected_improve_rate):
         # if ratio > accept_ratio and actual_improve > 0:
         #     return xnew
         if newfval<fval and new_kl<=pms.max_kl:
+            pms.max_kl *=1.002
             return xnew
     return x
 

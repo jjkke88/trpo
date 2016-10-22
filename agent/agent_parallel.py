@@ -23,10 +23,10 @@ tf.set_random_seed(seed)
 
 class TRPOAgentParallel(object):
 
-    def __init__(self, ps_device=None, cluster=None):
+    def __init__(self, env, ps_device=None, cluster=None):
         self.ps_device = ps_device
         self.cluster = cluster
-        self.env = env = Environment(gym.make(pms.environment_name))
+        self.env = env
         # if not isinstance(env.observation_space, Box) or \
         #    not isinstance(env.action_space, Discrete):
         #     print("Incompatible spaces.")
@@ -34,6 +34,8 @@ class TRPOAgentParallel(object):
         print("Observation Space", env.observation_space)
         print("Action Space", env.action_space)
         print("Action area, high:%f, low%f" % (env.action_space.high, env.action_space.low))
+        print env.observation_space.high
+        print env.observation_space.low
         self.end_count = 0
         self.paths = []
         self.train = True
@@ -65,33 +67,35 @@ class TRPOAgentParallel(object):
         # self.fp_mean1, weight_fp_mean1, bias_fp_mean1 = linear(self.obs, 32, activation_fn=tf.nn.tanh, name="fp_mean1")
         # self.fp_mean2, weight_fp_mean2, bias_fp_mean2 = linear(self.fp_mean1, 32, activation_fn=tf.nn.tanh, name="fp_mean2")
         # self.action_dist_means_n, weight_action_dist_means_n, bias_action_dist_means_n = linear(self.fp_mean2, pms.action_shape, name="action_dist_means")
-        with tf.device(tf.train.replica_device_setter(worker_device=self.ps_device , cluster=self.cluster)):
-            self.global_step = tf.Variable(0 , trainable=False, name='step')
-            self.action_dist_means_n = (pt.wrap(self.obs).
-                                        fully_connected(16, activation_fn=tf.nn.tanh,
-                                                        init=tf.random_normal_initializer(stddev=1.0), bias=False).
-                                        fully_connected(16, activation_fn=tf.nn.tanh,
-                                                        init=tf.random_normal_initializer(stddev=1.0), bias=False).
-                                        fully_connected(pms.action_shape, init=tf.random_normal_initializer(stddev=1.0),
-                                                        bias=False))
+        self.global_step = tf.Variable(0, trainable=False, name='step')
+        self.mean_episode_rewards = tf.placeholder(dtype, shape=None, name="mean_episode_rewards")
+        self.summary_ops_reward = tf.scalar_summary("mean_reward", self.mean_episode_rewards)
+        # self.summary_op = tf.add_summary(self.summary_ops_reward , name='total_summary')
+        self.action_dist_means_n = (pt.wrap(self.obs).
+                                    fully_connected(16, activation_fn=tf.nn.tanh,
+                                                    init=tf.random_normal_initializer(stddev=1.0), bias=False).
+                                    fully_connected(16, activation_fn=tf.nn.tanh,
+                                                    init=tf.random_normal_initializer(stddev=1.0), bias=False).
+                                    fully_connected(pms.action_shape, init=tf.random_normal_initializer(stddev=1.0),
+                                                    bias=False))
 
-            self.N = tf.shape(obs)[0]
-            Nf = tf.cast(self.N, dtype)
-            # Create std network.
-            if pms.use_std_network:
-                self.action_dist_logstds_n = (pt.wrap(self.obs).
-                                              fully_connected(16, activation_fn=tf.nn.tanh,
-                                                              init=tf.random_normal_initializer(stddev=1.0),
-                                                              bias=False).
-                                              fully_connected(16, activation_fn=tf.nn.tanh,
-                                                              init=tf.random_normal_initializer(stddev=1.0),
-                                                              bias=False).
-                                              fully_connected(pms.action_shape,
-                                                              init=tf.random_normal_initializer(stddev=1.0), bias=False))
-            else:
-                self.action_dist_logstds_n = tf.placeholder(dtype, shape=[None, pms.action_shape], name="logstd")
-            if pms.min_std is not None:
-                log_std_var = tf.maximum(self.action_dist_logstds_n, np.log(pms.min_std))
+        self.N = tf.shape(obs)[0]
+        Nf = tf.cast(self.N, dtype)
+        # Create std network.
+        if pms.use_std_network:
+            self.action_dist_logstds_n = (pt.wrap(self.obs).
+                                          fully_connected(16, activation_fn=tf.nn.tanh,
+                                                          init=tf.random_normal_initializer(stddev=1.0),
+                                                          bias=False).
+                                          fully_connected(16, activation_fn=tf.nn.tanh,
+                                                          init=tf.random_normal_initializer(stddev=1.0),
+                                                          bias=False).
+                                          fully_connected(pms.action_shape,
+                                                          init=tf.random_normal_initializer(stddev=1.0), bias=False))
+        else:
+            self.action_dist_logstds_n = tf.placeholder(dtype, shape=[None, pms.action_shape], name="logstd")
+        if pms.min_std is not None:
+            log_std_var = tf.maximum(self.action_dist_logstds_n, np.log(pms.min_std))
         self.step_inc_op = self.global_step.assign_add(1, use_locking=True)
         self.action_dist_stds_n = tf.exp(log_std_var)
         self.old_dist_info_vars = dict(mean=self.old_dist_means_n, log_std=self.old_dist_logstds_n)
@@ -115,7 +119,10 @@ class TRPOAgentParallel(object):
 
         # KL divergence where first arg is fixed
         # replace old->tf.stop_gradient from previous kl
-        grads = tf.gradients(kl, var_list)
+        kl_firstfixed = self.distribution.kl_sym_firstfixed(dict(mean=self.action_dist_means_n,
+                                        log_std=self.action_dist_logstds_n))
+
+        grads = tf.gradients(kl_firstfixed, var_list)
         self.flat_tangent = tf.placeholder(dtype, shape=[None])
         shapes = map(var_shape, var_list)
         start = 0
@@ -171,7 +178,6 @@ class TRPOAgentParallel(object):
             paths = self.storage.get_paths()  # get_paths
             # Computing returns and estimating advantage function.
             sample_data = self.storage.process_paths(paths)
-
             agent_infos = sample_data["agent_infos"]
             obs_n = sample_data["observations"]
             action_n = sample_data["actions"]
@@ -195,7 +201,7 @@ class TRPOAgentParallel(object):
             average_episode_std = np.mean(np.exp(action_dist_logstds_n))
             # if self.supervisor.should_stop():
             #     break
-            # print "\n********** Iteration %i ************" % i
+            reward_record = []
             for iter_num_per_train in range(pms.iter_num_per_train):
                 # if not self.train:
                 #     print("Episode mean: %f" % episoderewards.mean())
@@ -249,10 +255,13 @@ class TRPOAgentParallel(object):
                                 surrafter - surr_prev,
                                 ent_prev, mean_advant]
                     # self.logger.log_row(log_data)
-                    if i%20==0:
-                        # self.save_model("iter" + str(i))
-                        print episoderewards.mean()
+                    reward_record .append(episoderewards.mean())
+                    if self.supervisor.is_chief:
+                        self.supervisor.summary_computed(self.session, self.session.run(self.summary_ops_reward, feed_dict={self.mean_episode_rewards:episoderewards.mean()}))
+                    if i%1==0:
                         print self.global_step.eval(self.session)
+                        print np.mean(reward_record)
+                        reward_record = []
 
                     self.session.run(self.step_inc_op)
                     # for k, v in stats.iteritems():

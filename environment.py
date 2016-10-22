@@ -43,13 +43,14 @@ class Environment(Env):
 
     def step(self, action, **kwargs):
         self._observation, reward, done, info = self.env.step(action)
+        self._observation = np.clip(self._observation, self.env.observation_space.low, self.env.observation_space.high)
         return self.observation, reward, done, info
 
     def reset(self, **kwargs):
         self._observation = self.env.reset()
         return self.observation
 
-    def render(self, mode="human"):
+    def render(self, mode="human", close=False):
         return self.env.render(mode)
 
     @property
