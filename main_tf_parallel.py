@@ -3,19 +3,24 @@ import tensorflow as tf
 from agent.agent_parallel import TRPOAgentParallel
 import parameters as pms
 import gym
+import numpy as np
 from environment import Environment
 
 # Flags for defining the tf.train.ClusterSpec
 tf.app.flags.DEFINE_string("ps_hosts", "127.0.0.1:2223",
                            "Comma-separated list of hostname:port pairs")
-tf.app.flags.DEFINE_string("worker_hosts", "127.0.0.1:2226",
+tf.app.flags.DEFINE_string("worker_hosts", "127.0.0.1:2226,127.0.0.1:2227",
                            "Comma-separated list of hostname:port pairs")
 
 # Flags for defining the tf.train.Server
 tf.app.flags.DEFINE_string("job_name", "worker", "ps or worker")
-tf.app.flags.DEFINE_integer("task_index", 0, "Index of task within the job")
+tf.app.flags.DEFINE_integer("task_index", 1, "Index of task within the job")
 
 FLAGS = tf.app.flags.FLAGS
+
+seed = 1
+np.random.seed(seed)
+tf.set_random_seed(seed)
 
 def main(_):
     ps_hosts = FLAGS.ps_hosts.split(',')
@@ -37,10 +42,10 @@ def main(_):
         server.join()
     elif FLAGS.job_name == "worker":
         # 将op 挂载到各个本地的worker上
+        env = Environment(gym.make(pms.environment_name))
         with tf.device(tf.train.replica_device_setter(
             worker_device="/job:worker/task:%d" % (FLAGS.task_index),
             cluster=cluster)):
-            env = Environment(gym.make(pms.environment_name))
             agent = TRPOAgentParallel(env, ps_device="/job:ps/task:0", cluster=cluster)
             saver = tf.train.Saver(max_to_keep=10)
             init_op = tf.initialize_all_variables()
@@ -51,8 +56,8 @@ def main(_):
                              init_op=init_op,
                              global_step=agent.global_step,
                              saver=saver,
-                             summary_op=summary_op,
-                             save_model_secs=6)
+                             summary_op=None,
+                             save_model_secs=60)
 
         # The supervisor takes care of session initialization, restoring from
         # a checkpoint, and closing when done or an error occurs.

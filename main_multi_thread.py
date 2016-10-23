@@ -44,8 +44,10 @@ class MasterContinous(object):
         self.session = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 
         self.network = NetworkContinous("master")
-        self.gf = GetFlat(self.session, self.network.var_list)  # get theta from var_list
-        self.sff = SetFromFlat(self.session, self.network.var_list)  # set theta from var_List
+        self.gf = GetFlat(self.network.var_list)  # get theta from var_list
+        self.gf.session = self.session
+        self.sff = SetFromFlat(self.network.var_list)  # set theta from var_List
+        self.sff.session = self.session
         self.session.run(tf.initialize_all_variables())
         self.saver = tf.train.Saver(max_to_keep=10)
 

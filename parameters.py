@@ -21,13 +21,15 @@ deviation = 0.1
 render = False
 train_flag = True
 iter_num_per_train = 1
-checkpoint_file = "checkpoint/iter_mountaincar90.ckpt"
+checkpoint_file = None
+save_model_times = 1
 record_movie = False
 upload_to_gym = False
 
 # for environment
 
 environment_name = "MountainCarContinuous-v0"
+# environment_name = "Pendulum-v0"
 
 # for continous action
 min_std = 1e-6

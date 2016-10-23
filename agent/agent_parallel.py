@@ -15,7 +15,7 @@ import krylov
 from logger.logger import Logger
 from distribution.diagonal_gaussian import DiagonalGaussian
 from baseline.baseline_lstsq import Baseline
-from environment import Environment
+
 seed = 1
 np.random.seed(seed)
 tf.set_random_seed(seed)
@@ -34,8 +34,6 @@ class TRPOAgentParallel(object):
         print("Observation Space", env.observation_space)
         print("Action Space", env.action_space)
         print("Action area, high:%f, low%f" % (env.action_space.high, env.action_space.low))
-        print env.observation_space.high
-        print env.observation_space.low
         self.end_count = 0
         self.paths = []
         self.train = True
@@ -43,7 +41,6 @@ class TRPOAgentParallel(object):
         self.storage = Storage(self, self.env, self.baseline)
         self.distribution = DiagonalGaussian(pms.action_shape)
         self.init_network()
-        self.saver = tf.train.Saver(max_to_keep=10)
         if pms.train_flag:
             self.init_logger()
 
@@ -51,9 +48,12 @@ class TRPOAgentParallel(object):
         head = ["average_episode_std", "sum steps episode number" "total number of episodes", "Average sum of rewards per episode",
                 "KL between old and new distribution", "Surrogate loss", "Surrogate loss prev", "ds", "entropy",
                 "mean_advant"]
-        # self.logger = Logger(head)
+        self.logger = Logger(head)
 
     def init_network(self):
+
+        self.global_step = tf.Variable(0 , trainable=False , name='step')
+        self.step_inc_op = self.global_step.assign_add(1 , use_locking=True)
         self.obs = obs = tf.placeholder(
             dtype, shape=[None, pms.obs_shape], name="obs")
         self.action_n = tf.placeholder(dtype, shape=[None, pms.action_shape], name="action")
@@ -67,20 +67,14 @@ class TRPOAgentParallel(object):
         # self.fp_mean1, weight_fp_mean1, bias_fp_mean1 = linear(self.obs, 32, activation_fn=tf.nn.tanh, name="fp_mean1")
         # self.fp_mean2, weight_fp_mean2, bias_fp_mean2 = linear(self.fp_mean1, 32, activation_fn=tf.nn.tanh, name="fp_mean2")
         # self.action_dist_means_n, weight_action_dist_means_n, bias_action_dist_means_n = linear(self.fp_mean2, pms.action_shape, name="action_dist_means")
-        self.global_step = tf.Variable(0, trainable=False, name='step')
-        self.mean_episode_rewards = tf.placeholder(dtype, shape=None, name="mean_episode_rewards")
-        self.summary_ops_reward = tf.scalar_summary("mean_reward", self.mean_episode_rewards)
-        # self.summary_op = tf.add_summary(self.summary_ops_reward , name='total_summary')
         self.action_dist_means_n = (pt.wrap(self.obs).
-                                    fully_connected(16, activation_fn=tf.nn.tanh,
-                                                    init=tf.random_normal_initializer(stddev=1.0), bias=False).
-                                    fully_connected(16, activation_fn=tf.nn.tanh,
-                                                    init=tf.random_normal_initializer(stddev=1.0), bias=False).
-                                    fully_connected(pms.action_shape, init=tf.random_normal_initializer(stddev=1.0),
+                                    fully_connected(16, activation_fn=tf.nn.relu,
+                                                     bias=False).
+                                    fully_connected(16, activation_fn=tf.nn.relu,
+                                                     bias=False).
+                                    fully_connected(pms.action_shape,
                                                     bias=False))
 
-        self.N = tf.shape(obs)[0]
-        Nf = tf.cast(self.N, dtype)
         # Create std network.
         if pms.use_std_network:
             self.action_dist_logstds_n = (pt.wrap(self.obs).
@@ -96,8 +90,8 @@ class TRPOAgentParallel(object):
             self.action_dist_logstds_n = tf.placeholder(dtype, shape=[None, pms.action_shape], name="logstd")
         if pms.min_std is not None:
             log_std_var = tf.maximum(self.action_dist_logstds_n, np.log(pms.min_std))
-        self.step_inc_op = self.global_step.assign_add(1, use_locking=True)
         self.action_dist_stds_n = tf.exp(log_std_var)
+
         self.old_dist_info_vars = dict(mean=self.old_dist_means_n, log_std=self.old_dist_logstds_n)
         self.new_dist_info_vars = dict(mean=self.action_dist_means_n, log_std=self.action_dist_logstds_n)
         self.likehood_action_dist = self.distribution.log_likelihood_sym(self.action_n, self.new_dist_info_vars)
@@ -134,15 +128,14 @@ class TRPOAgentParallel(object):
             start += size
         self.gvp = [tf.reduce_sum(g * t) for (g, t) in zip(grads, tangents)]
         self.fvp = flatgrad(tf.reduce_sum(self.gvp), var_list)  # get kl''*p
-
-        # self.load_model()
+        # self.saver = tf.train.Saver(max_to_keep=10)
+        # self.load_model(pms.checkpoint_file)
 
     def get_samples(self, path_number):
         for i in range(path_number):
             self.storage.get_single_path()
 
     def get_action(self, obs, *args):
-        # print obs
         obs = np.expand_dims(obs, 0)
         # action_dist_logstd = np.expand_dims([np.log(pms.std)], 0)
         if pms.use_std_network:
@@ -174,10 +167,12 @@ class TRPOAgentParallel(object):
         i = 0
         while True:
             # Generating paths.
+            print("Rollout")
             self.get_samples(pms.paths_number)
             paths = self.storage.get_paths()  # get_paths
             # Computing returns and estimating advantage function.
             sample_data = self.storage.process_paths(paths)
+
             agent_infos = sample_data["agent_infos"]
             obs_n = sample_data["observations"]
             action_n = sample_data["actions"]
@@ -199,78 +194,63 @@ class TRPOAgentParallel(object):
 
             episoderewards = np.array([path["rewards"].sum() for path in paths])
             average_episode_std = np.mean(np.exp(action_dist_logstds_n))
-            # if self.supervisor.should_stop():
-            #     break
-            reward_record = []
-            for iter_num_per_train in range(pms.iter_num_per_train):
-                # if not self.train:
-                #     print("Episode mean: %f" % episoderewards.mean())
-                #     self.end_count += 1
-                #     if self.end_count > 100:
-                #         break
 
-                if self.train:
-                    thprev = self.gf()  # get theta_old
+            print "\n********** Iteration %i ************" % i
+            thprev = self.gf()  # get theta_old
+            print thprev.mean()
 
-                    def fisher_vector_product(p):
-                        feed[self.flat_tangent] = p
-                        return self.session.run(self.fvp, feed) + pms.cg_damping * p
+            def fisher_vector_product(p):
+                feed[self.flat_tangent] = p
+                return self.session.run(self.fvp, feed) + pms.cg_damping * p
 
-                    g = self.session.run(self.pg, feed_dict=feed)
-                    stepdir = krylov.cg(fisher_vector_product, g, cg_iters=pms.cg_iters)
-                    shs = 0.5 * stepdir.dot(fisher_vector_product(stepdir))  # theta
-                    fullstep = stepdir * np.sqrt(2.0 * pms.max_kl / shs)
-                    neggdotstepdir = -g.dot(stepdir)
+            g = self.session.run(self.pg, feed_dict=feed)
+            stepdir = krylov.cg(fisher_vector_product, g, cg_iters=pms.cg_iters)
+            shs = 0.5 * stepdir.dot(fisher_vector_product(stepdir))  # theta
+            fullstep = stepdir * np.sqrt(2.0 * pms.max_kl / shs)
+            neggdotstepdir = -g.dot(stepdir)
 
-                    def loss(th):
-                        self.sff(th)
-                        return self.session.run(self.losses, feed_dict=feed)
+            def loss(th):
+                self.sff(th)
+                return self.session.run(self.losses, feed_dict=feed)
 
-                    surr_prev, kl_prev, ent_prev = loss(thprev)
-                    mean_advant = np.mean(advant_n)
-                    theta = linesearch(loss, thprev, fullstep, neggdotstepdir)
-                    self.sff(theta)
+            surr_prev, kl_prev, ent_prev = loss(thprev)
+            mean_advant = np.mean(advant_n)
+            theta = linesearch(loss, thprev, fullstep, neggdotstepdir)
+            theta = theta-thprev+self.gf()
+            self.sff(theta)
 
-                    surrafter, kloldnew, entnew = self.session.run(self.losses, feed_dict=feed)
+            surrafter, kloldnew, entnew = self.session.run(self.losses, feed_dict=feed)
 
-                    stats = {}
+            stats = {}
 
-                    numeptotal += len(episoderewards)
+            numeptotal += len(episoderewards)
 
-                    stats["average_episode_std"] = average_episode_std
-                    stats["sum steps of episodes"] = sample_data["sum_episode_steps"]
-                    stats["Total number of episodes"] = numeptotal
-                    stats["Average sum of rewards per episode"] = episoderewards.mean()
-                    # tf.scalar_summary("mean_episode_reward", tf.Variable(episoderewards.mean()))
-                    # stats["Entropy"] = entropy
-                    # exp = explained_variance(np.array(baseline_n), np.array(returns_n))
-                    # stats["Baseline explained"] = exp
-                    stats["Time elapsed"] = "%.2f mins" % ((time.time() - start_time) / 60.0)
-                    stats["KL between old and new distribution"] = kloldnew
-                    stats["Surrogate loss"] = surrafter
-                    stats["Surrogate loss prev"] = surr_prev
-                    stats["entropy"] = ent_prev
-                    stats["mean_advant"] = mean_advant
-                    log_data = [average_episode_std, len(episoderewards), numeptotal, episoderewards.mean(), kloldnew, surrafter, surr_prev,
-                                surrafter - surr_prev,
-                                ent_prev, mean_advant]
-                    # self.logger.log_row(log_data)
-                    reward_record .append(episoderewards.mean())
-                    if self.supervisor.is_chief:
-                        self.supervisor.summary_computed(self.session, self.session.run(self.summary_ops_reward, feed_dict={self.mean_episode_rewards:episoderewards.mean()}))
-                    if i%1==0:
-                        print self.global_step.eval(self.session)
-                        print np.mean(reward_record)
-                        reward_record = []
-
-                    self.session.run(self.step_inc_op)
-                    # for k, v in stats.iteritems():
-                    #     print(k + ": " + " " * (40 - len(k)) + str(v))
-                        # if entropy != entropy:
-                        #     exit(-1)
-                        # if exp > 0.95:
-                        #     self.train = False
-            # self.save_model("iter" + str(i))
+            stats["average_episode_std"] = average_episode_std
+            stats["sum steps of episodes"] = sample_data["sum_episode_steps"]
+            stats["Total number of episodes"] = numeptotal
+            stats["Average sum of rewards per episode"] = episoderewards.mean()
+            # stats["Entropy"] = entropy
+            # exp = explained_variance(np.array(baseline_n), np.array(returns_n))
+            # stats["Baseline explained"] = exp
+            stats["Time elapsed"] = "%.2f mins" % ((time.time() - start_time) / 60.0)
+            stats["KL between old and new distribution"] = kloldnew
+            stats["Surrogate loss"] = surrafter
+            stats["Surrogate loss prev"] = surr_prev
+            stats["entropy"] = ent_prev
+            stats["mean_advant"] = mean_advant
+            log_data = [average_episode_std, len(episoderewards), numeptotal, episoderewards.mean(), kloldnew, surrafter, surr_prev,
+                        surrafter - surr_prev,
+                        ent_prev, mean_advant]
+            # self.logger.log_row(log_data)
+            print episoderewards.mean()
+            print self.gf().mean()
+            # for k, v in stats.iteritems():
+            #     print(k + ": " + " " * (40 - len(k)) + str(v))
+                # if entropy != entropy:
+                #     exit(-1)
+                # if exp > 0.95:
+                #     self.train = False
+            self.session.run(self.step_inc_op)
             i += 1
 
     def test(self, model_name):
