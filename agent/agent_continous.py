@@ -12,6 +12,7 @@ class TRPOAgent(TRPOAgentContinousBase):
 
     def __init__(self, env):
         super(TRPOAgent, self).__init__(env)
+        self.init_network()
 
     def init_network(self):
         """
@@ -68,7 +69,6 @@ class TRPOAgent(TRPOAgentContinousBase):
         # self.load_model(pms.checkpoint_file)
 
     def learn(self):
-        self.saver = tf.train.Saver(max_to_keep=10)
         iter_num = 0
         while True:
             print "\n********** Iteration %i ************" % iter_num

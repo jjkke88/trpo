@@ -1,33 +1,14 @@
 import os
 import logging
-import gym
-from gym import envs, scoreboard
-from gym.spaces import Discrete, Box
 import tempfile
 import sys
-from environment import Environment
-from agent.agent_continous import TRPOAgent
-import parameters as pms
 from utils import *
-import threading
-import gym
 import numpy as np
-import random
 import tensorflow as tf
-import time
-import threading
-import prettytensor as pt
 import signal
-from storage.storage_continous import Storage
-from storage.storage_continous import Rollout
-import math
 import parameters as pms
-import krylov
 from logger.logger import Logger
 from agent.agent_cotinous_single_thread import TRPOAgentContinousSingleThread
-from distribution.diagonal_gaussian import DiagonalGaussian
-from baseline.baseline_lstsq import Baseline
-from environment import Environment
 from network.network_continous import NetworkContinous
 
 seed = 1
@@ -92,15 +73,22 @@ class MasterContinous(object):
 
     def load_model(self , model_name):
         try:
-            self.saver.restore(self.session , model_name)
+            if model_name is not None:
+                self.saver.restore(self.session , model_name)
+            else:
+                self.saver.restore(self.session , tf.train.latest_checkpoint("checkpoint/"))
         except:
             print "load model %s fail" % (model_name)
 
 def signal_handler():
     sys.exit(0)
 
-master = MasterContinous()
 
+if not os.path.isdir("./checkpoint"):
+    os.makedirs("./checkpoint")
+if not os.path.isdir("./log"):
+    os.makedirs("./log")
+master = MasterContinous()
 if pms.train_flag:
     master.train()
 else:

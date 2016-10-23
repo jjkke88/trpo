@@ -31,16 +31,15 @@ class TRPOAgentContinousSingleThread(TRPOAgentContinousBase, threading.Thread):
         print "create thread %d"%(thread_id)
         self.thread_id = thread_id
         threading.Thread.__init__(self, name="thread_%d" % thread_id)
+        self.master = master
         self.env = env = Environment(gym.make(pms.environment_name))
         TRPOAgentContinousBase.__init__(self, env)
-        self.master = master
+
         self.session = self.master.session
-
-
+        self.init_network()
 
 
     def init_network(self):
-
         """
             [input]
             self.obs
@@ -53,7 +52,7 @@ class TRPOAgentContinousSingleThread(TRPOAgentContinousBase, threading.Thread):
             self.action_dist_logstds_n
             var_list
             """
-        self.net = self.network = NetworkContinous(str(self.thread_id))
+        self.net = NetworkContinous(str(self.thread_id))
         if pms.min_std is not None:
             log_std_var = tf.maximum(self.net.action_dist_logstds_n , np.log(pms.min_std))
         self.action_dist_stds_n = tf.exp(log_std_var)
@@ -90,7 +89,6 @@ class TRPOAgentContinousSingleThread(TRPOAgentContinousBase, threading.Thread):
             start += size
         self.gvp = [tf.reduce_sum(g * t) for (g , t) in zip(grads , tangents)]
         self.fvp = flatgrad(tf.reduce_sum(self.gvp) , var_list)  # get kl''*p
-        # self.load_model(pms.checkpoint_file)
 
     def run(self):
         self.learn()
@@ -99,14 +97,22 @@ class TRPOAgentContinousSingleThread(TRPOAgentContinousBase, threading.Thread):
         i = 0
         sum_gradient = 0
         while True:
-            print "\n********** Iteration %i ************" % i
             self.sff(self.master.get_parameters())
-            stats, gradient = self.train_mini_batch()
-            sum_gradient+=gradient
+
+            # Generating paths.
+            stats, gradient = self.train_mini_batch(parallel=True)
+            sum_gradient += gradient
+            self.master.apply_gradient(sum_gradient)
+            print "\n********** Iteration %i ************" % i
             for k , v in stats.iteritems():
                 print(k + ": " + " " * (40 - len(k)) + str(v))
-            if i%1==0:
-                self.master.apply_gradient(sum_gradient)
-                sum_gradient = 0
+            sum_gradient = 0
+            if self.thread_id==1 and i%pms.save_model_times==0:
+                self.save_model(pms.environment_name + "-" + str(i))
             i += 1
 
+
+    def test(self):
+        self.sff(self.master.get_parameters())
+        for i in range(50):
+            self.storage.get_single_path()

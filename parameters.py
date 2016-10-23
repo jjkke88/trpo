@@ -9,7 +9,7 @@ history_number = 2
 jobs = 2
 max_iter_number = 20000
 paths_number = 8
-max_path_length = 10000
+max_path_length = 199
 batch_size = max_path_length
 max_kl = 0.01
 gae_lambda = 1.0
@@ -28,8 +28,8 @@ upload_to_gym = False
 
 # for environment
 
-environment_name = "MountainCarContinuous-v0"
-# environment_name = "Pendulum-v0"
+# environment_name = "MountainCarContinuous-v0"
+environment_name = "Pendulum-v0"
 
 # for continous action
 min_std = 1e-6
@@ -37,8 +37,8 @@ center_adv = True
 positive_adv = False
 use_std_network = False
 std = 1.1
-obs_shape = 2
+obs_shape = 3
 action_shape = 1
-min_a = -1.0
-max_a = 1.0
+min_a = -2.0
+max_a = 2.0
 

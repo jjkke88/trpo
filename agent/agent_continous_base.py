@@ -41,7 +41,7 @@ class TRPOAgentContinousBase(object):
         self.storage = Storage(self, self.env, self.baseline)
         self.distribution = DiagonalGaussian(pms.action_shape)
         self.net = None
-        self.init_network()
+        self.saver = tf.train.Saver(max_to_keep=10)
 
     # def init_logger(self):
     #     head = ["average_episode_std" , "sum steps episode number" "total number of episodes" ,
@@ -85,7 +85,7 @@ class TRPOAgentContinousBase(object):
             # action = np.clip(action, pms.min_a, pms.max_a)
             return action, dict(mean=action_dist_means_n[0], log_std=action_dist_logstd[0])
 
-    def train_mini_batch(self):
+    def train_mini_batch(self, parallel=False):
         # Generating paths.
         print("Rollout")
         start_time = time.time()
@@ -128,9 +128,11 @@ class TRPOAgentContinousBase(object):
             return self.session.run(self.losses , feed_dict=feed)
         surr_prev , kl_prev , ent_prev = loss(thprev)
         mean_advant = np.mean(advant_n)
-        theta = linesearch(loss , thprev , fullstep , neggdotstepdir)
-        # theta = thprev-fullstep
-        surrafter , kloldnew , entnew = self.session.run(self.losses , feed_dict=feed)
+        if parallel is True:
+            theta = linesearch_parallel(loss , thprev , fullstep , neggdotstepdir)
+        else:
+            theta = linesearch(loss , thprev , fullstep , neggdotstepdir)
+        surrafter, kloldnew, entnew = self.session.run(self.losses , feed_dict=feed)
         stats = {}
         stats["average_episode_std"] = average_episode_std
         stats["sum steps of episodes"] = sample_data["sum_episode_steps"]

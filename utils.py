@@ -129,6 +129,17 @@ def linesearch(f, x, fullstep, expected_improve_rate):
             return xnew
     return x
 
+def linesearch_parallel(f, x, fullstep, expected_improve_rate):
+    fval, old_kl, entropy = f(x)
+    xnew = x - fullstep
+    newfval, new_kl, new_ent = f(xnew)
+    if newfval < fval and new_kl <= pms.max_kl:
+        pms.max_kl *= 1.002
+        return xnew
+    else:
+        f(x)
+        return x
+
 
 class dict2(dict):
     def __init__(self, **kwargs):
