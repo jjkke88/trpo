@@ -13,6 +13,7 @@ class TRPOAgent(TRPOAgentContinousBase):
     def __init__(self, env):
         super(TRPOAgent, self).__init__(env)
         self.init_network()
+        self.saver = tf.train.Saver(max_to_keep=10)
 
     def init_network(self):
         """

@@ -37,6 +37,7 @@ class TRPOAgentContinousSingleThread(TRPOAgentContinousBase, threading.Thread):
 
         self.session = self.master.session
         self.init_network()
+        self.saver = tf.train.Saver(max_to_keep=10)
 
 
     def init_network(self):

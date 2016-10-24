@@ -41,7 +41,6 @@ class TRPOAgentContinousBase(object):
         self.storage = Storage(self, self.env, self.baseline)
         self.distribution = DiagonalGaussian(pms.action_shape)
         self.net = None
-        self.saver = tf.train.Saver(max_to_keep=10)
 
     # def init_logger(self):
     #     head = ["average_episode_std" , "sum steps episode number" "total number of episodes" ,
