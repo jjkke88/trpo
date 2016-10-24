@@ -66,7 +66,7 @@ class TRPOAgent(TRPOAgentContinousBase):
         self.gvp = [tf.reduce_sum(g * t) for (g, t) in zip(grads, tangents)]
         self.fvp = flatgrad(tf.reduce_sum(self.gvp), var_list)  # get kl''*p
         self.session.run(tf.initialize_all_variables())
-        self.saver = tf.train.Saver(max_to_keep=10)
+        # self.saver = tf.train.Saver(max_to_keep=10)
         # self.load_model(pms.checkpoint_file)
 
     def learn(self):

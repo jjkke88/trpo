@@ -131,6 +131,7 @@ class TRPOAgentContinousBase(object):
             theta = linesearch_parallel(loss , thprev , fullstep , neggdotstepdir)
         else:
             theta = linesearch(loss , thprev , fullstep , neggdotstepdir)
+            self.sff(theta)
         surrafter, kloldnew, entnew = self.session.run(self.losses , feed_dict=feed)
         stats = {}
         stats["average_episode_std"] = average_episode_std
