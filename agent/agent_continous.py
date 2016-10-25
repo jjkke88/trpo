@@ -38,6 +38,8 @@ class TRPOAgent(TRPOAgentContinousBase):
         self.ratio_n = self.distribution.likelihood_ratio_sym(self.net.action_n, self.new_dist_info_vars,
                                                               self.old_dist_info_vars)
         surr = -tf.reduce_mean(self.ratio_n * self.net.advant)  # Surrogate loss
+        batch_size = tf.shape(self.net.obs)[0]
+        batch_size_float = tf.cast(batch_size , tf.float32)
         kl = tf.reduce_mean(self.distribution.kl_sym(self.old_dist_info_vars, self.new_dist_info_vars))
         ent = self.distribution.entropy(self.old_dist_info_vars)
         # ent = tf.reduce_sum(-p_n * tf.log(p_n + eps)) / Nf
@@ -52,7 +54,7 @@ class TRPOAgent(TRPOAgentContinousBase):
         # get A
         # KL divergence where first arg is fixed
         # replace old->tf.stop_gradient from previous kl
-        kl_firstfixed = self.distribution.kl_sym_firstfixed(self.new_dist_info_vars)
+        kl_firstfixed = self.distribution.kl_sym_firstfixed(self.new_dist_info_vars) / batch_size_float
         grads = tf.gradients(kl_firstfixed, var_list)
         self.flat_tangent = tf.placeholder(dtype, shape=[None])
         shapes = map(var_shape, var_list)
@@ -74,7 +76,7 @@ class TRPOAgent(TRPOAgentContinousBase):
         while True:
             print "\n********** Iteration %i ************" % iter_num
             print self.gf().mean()
-            stats, theta, thprev = self.train_mini_batch(linear_search=True)
+            stats, theta, thprev = self.train_mini_batch(linear_search=False)
             self.sff(theta)
             for k , v in stats.iteritems():
                 print(k + ": " + " " * (40 - len(k)) + str(v))

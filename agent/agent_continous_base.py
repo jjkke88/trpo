@@ -91,16 +91,16 @@ class TRPOAgentContinousBase(object):
         advant_n = sample_data["advantages"]
         n_samples = len(obs_n)
         inds = np.random.choice(n_samples , int(math.floor(n_samples * pms.subsample_factor)), replace=False)
+        # inds = range(n_samples)
         obs_n = obs_n[inds]
         action_n = action_n[inds]
         advant_n = advant_n[inds]
         action_dist_means_n = np.array([agent_info["mean"] for agent_info in agent_infos[inds]])
         action_dist_logstds_n = np.array([agent_info["log_std"] for agent_info in agent_infos[inds]])
-        feed = {self.net.obs: obs_n ,
-                self.net.advant: advant_n ,
-                self.net.old_dist_means_n: action_dist_means_n ,
-                self.net.old_dist_logstds_n: action_dist_logstds_n ,
-                self.net.action_dist_logstds_n: action_dist_logstds_n ,
+        feed = {self.net.obs: obs_n,
+                self.net.advant: advant_n,
+                self.net.old_dist_means_n: action_dist_means_n,
+                self.net.old_dist_logstds_n: action_dist_logstds_n,
                 self.net.action_n: action_n
                 }
 
@@ -113,7 +113,6 @@ class TRPOAgentContinousBase(object):
         stepdir = krylov.cg(fisher_vector_product, -g , cg_iters=pms.cg_iters)
         shs = 0.5 * stepdir.dot(fisher_vector_product(stepdir))  # theta
         # if shs<0, then the nan error would appear
-        print shs<0
         lm = np.sqrt(shs / pms.max_kl)
         fullstep = stepdir / lm
         neggdotstepdir = -g.dot(stepdir)
