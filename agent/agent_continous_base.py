@@ -54,28 +54,15 @@ class TRPOAgentContinousBase(object):
             raise NameError("network have not been defined")
         obs = np.expand_dims(obs, 0)
         # action_dist_logstd = np.expand_dims([np.log(pms.std)], 0)
-        if pms.use_std_network:
-            action_dist_means_n, action_dist_logstds_n = self.session.run(
-                [self.action_dist_means_n, self.action_dist_logstds_n],
-                {self.obs: obs})
-            if pms.train_flag:
-                rnd = np.random.normal(size=action_dist_means_n[0].shape)
-                action = rnd * np.exp(action_dist_logstds_n[0]) + action_dist_means_n[0]
-            else:
-                action = action_dist_means_n[0]
-            # action = np.clip(action, pms.min_a, pms.max_a)
-            return action, dict(mean=action_dist_means_n[0], log_std=action_dist_logstds_n[0])
+        action_dist_means_n, action_dist_stds_n = self.session.run([self.net.action_dist_means_n, self.action_dist_stds_n],
+                                               {self.net.obs: obs})
+        if pms.train_flag:
+            rnd = np.random.normal(size=action_dist_means_n[0].shape)
+            action = rnd * action_dist_stds_n[0] + action_dist_means_n[0]
         else:
-            action_dist_logstd = np.expand_dims([np.log(pms.std)], 0)
-            action_dist_means_n = self.session.run(self.net.action_dist_means_n,
-                                                   {self.net.obs: obs})
-            if pms.train_flag:
-                rnd = np.random.normal(size=action_dist_means_n[0].shape)
-                action = rnd * np.exp(action_dist_logstd[0]) + action_dist_means_n[0]
-            else:
-                action = action_dist_means_n[0]
-            # action = np.clip(action, pms.min_a, pms.max_a)
-            return action, dict(mean=action_dist_means_n[0], log_std=action_dist_logstd[0])
+            action = action_dist_means_n[0]
+        # action = np.clip(action, pms.min_a, pms.max_a)
+        return action, dict(mean=action_dist_means_n[0], log_std=action_dist_stds_n[0])
 
     def train_mini_batch(self, parallel=False, linear_search=True):
         # Generating paths.

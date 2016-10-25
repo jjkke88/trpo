@@ -29,21 +29,9 @@ class NetworkContinous(object):
 
             self.N = tf.shape(obs)[0]
             Nf = tf.cast(self.N, dtype)
-            # Create std network.
-            if pms.use_std_network:
-                self.action_dist_logstds_n = (pt.wrap(self.obs).
-                                              fully_connected(16, activation_fn=tf.nn.tanh,
-                                                              init=tf.random_normal_initializer(stddev=1.0),
-                                                              bias=False, name="%s_fcstd1"%scope).
-                                              fully_connected(16, activation_fn=tf.nn.tanh,
-                                                              init=tf.random_normal_initializer(stddev=1.0),
-                                                              bias=False, name="%s_fcstd2"%scope).
-                                              fully_connected(pms.action_shape,
-                                                              init=tf.random_normal_initializer(stddev=1.0), bias=False, name="%s_fcstd3"%scope))
-            else:
-                action_dist_logstd_param = tf.Variable((.01*np.random.randn(1, pms.action_shape)).astype(np.float32), trainable=False, name="%spolicy_logstd"%scope)
-                self.action_dist_logstds_n = tf.tile(action_dist_logstd_param,
-                                                  tf.pack((tf.shape(self.action_dist_means_n)[0], 1)))
+            action_dist_logstd_param = tf.Variable((.01*np.random.randn(1, pms.action_shape)).astype(np.float32),  name="%spolicy_logstd"%scope)
+            self.action_dist_logstds_n = tf.tile(action_dist_logstd_param,
+                                              tf.pack((tf.shape(self.action_dist_means_n)[0], 1)))
             self.var_list = [v for v in tf.trainable_variables()if v.name.startswith(scope)]
 
     def get_action_dist_means_n(self, session, obs):
