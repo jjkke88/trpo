@@ -126,7 +126,7 @@ def linesearch(f, x, fullstep, expected_improve_rate):
         #     pms.max_kl *= 1.002
         #     return xnew
         if newfval<fval and new_kl<=pms.max_kl:
-            pms.max_kl /=1.002
+            pms.max_kl *=1.002
             return xnew
     return x
 
