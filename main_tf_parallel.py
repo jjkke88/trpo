@@ -14,7 +14,7 @@ tf.app.flags.DEFINE_string("worker_hosts", "127.0.0.1:2226,127.0.0.1:2227",
 
 # Flags for defining the tf.train.Server
 tf.app.flags.DEFINE_string("job_name", "worker", "ps or worker")
-tf.app.flags.DEFINE_integer("task_index", 1, "Index of task within the job")
+tf.app.flags.DEFINE_integer("task_index",0, "Index of task within the job")
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -46,7 +46,7 @@ def main(_):
         with tf.device(tf.train.replica_device_setter(
             worker_device="/job:worker/task:%d" % (FLAGS.task_index),
             cluster=cluster)):
-            agent = TRPOAgentParallel(env, ps_device="/job:ps/task:0", cluster=cluster)
+            agent = TRPOAgentParallel(env)
             saver = tf.train.Saver(max_to_keep=10)
             init_op = tf.initialize_all_variables()
             summary_op = tf.merge_all_summaries()

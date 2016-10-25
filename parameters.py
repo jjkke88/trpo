@@ -25,6 +25,7 @@ checkpoint_file = None
 save_model_times = 1
 record_movie = False
 upload_to_gym = False
+checkpoint_dir="checkpoint_parallel"
 
 # for environment
 
