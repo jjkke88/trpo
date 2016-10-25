@@ -73,8 +73,9 @@ class TRPOAgent(TRPOAgentContinousBase):
         iter_num = 0
         while True:
             print "\n********** Iteration %i ************" % iter_num
-            stats, gradient = self.train_mini_batch()
-            self.sff(self.gf()+gradient)
+            print self.gf().mean()
+            stats, theta, thprev = self.train_mini_batch(linear_search=True)
+            self.sff(theta)
             for k , v in stats.iteritems():
                 print(k + ": " + " " * (40 - len(k)) + str(v))
             if iter_num % pms.save_model_times == 0:

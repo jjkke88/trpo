@@ -101,8 +101,8 @@ class TRPOAgentContinousSingleThread(TRPOAgentContinousBase, threading.Thread):
             self.sff(self.master.get_parameters())
 
             # Generating paths.
-            stats, gradient = self.train_mini_batch(parallel=True)
-            sum_gradient += gradient
+            stats, theta, theprev = self.train_mini_batch(parallel=False)
+            sum_gradient += theta-theprev
             self.master.apply_gradient(sum_gradient)
             print "\n********** Iteration %i ************" % i
             for k , v in stats.iteritems():

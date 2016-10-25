@@ -1,25 +1,18 @@
 from utils import *
 import gym
 import numpy as np
-import random
 import tensorflow as tf
 import time
-import threading
-import prettytensor as pt
-
 from storage.storage_continous import Storage
-from network.network_continous import NetworkContinous
 import math
 import parameters as pms
 import krylov
-from logger.logger import Logger
 from distribution.diagonal_gaussian import DiagonalGaussian
 from baseline.baseline_lstsq import Baseline
 
 seed = 1
 np.random.seed(seed)
 tf.set_random_seed(seed)
-
 
 class TRPOAgentContinousBase(object):
 
@@ -84,7 +77,7 @@ class TRPOAgentContinousBase(object):
             # action = np.clip(action, pms.min_a, pms.max_a)
             return action, dict(mean=action_dist_means_n[0], log_std=action_dist_logstd[0])
 
-    def train_mini_batch(self, parallel=False):
+    def train_mini_batch(self, parallel=False, linear_search=True):
         # Generating paths.
         print("Rollout")
         start_time = time.time()
@@ -112,38 +105,36 @@ class TRPOAgentContinousBase(object):
                 }
 
         episoderewards = np.array([path["rewards"].sum() for path in paths])
-        average_episode_std = np.mean(np.exp(action_dist_logstds_n))
         thprev = self.gf()  # get theta_old
         def fisher_vector_product(p):
             feed[self.flat_tangent] = p
             return self.session.run(self.fvp , feed) + pms.cg_damping * p
         g = self.session.run(self.pg , feed_dict=feed)
-        stepdir = krylov.cg(fisher_vector_product , g , cg_iters=pms.cg_iters)
+        stepdir = krylov.cg(fisher_vector_product, -g , cg_iters=pms.cg_iters)
         shs = 0.5 * stepdir.dot(fisher_vector_product(stepdir))  # theta
-        fullstep = stepdir * np.sqrt(2.0 * pms.max_kl / shs)
+        # if shs<0, then the nan error would appear
+        print shs<0
+        lm = np.sqrt(shs / pms.max_kl)
+        fullstep = stepdir / lm
         neggdotstepdir = -g.dot(stepdir)
         def loss(th):
             self.sff(th)
             return self.session.run(self.losses , feed_dict=feed)
-        surr_prev , kl_prev , ent_prev = loss(thprev)
-        mean_advant = np.mean(advant_n)
         if parallel is True:
-            theta = linesearch_parallel(loss , thprev , fullstep , neggdotstepdir)
+            theta = linesearch_parallel(loss, thprev , fullstep , neggdotstepdir/lm)
         else:
-            theta = linesearch(loss , thprev , fullstep , neggdotstepdir)
-            self.sff(theta)
-        surrafter, kloldnew, entnew = self.session.run(self.losses , feed_dict=feed)
+            if linear_search:
+                theta = linesearch(loss , thprev , fullstep , neggdotstepdir/lm)
+            else:
+                theta = thprev + fullstep
+                if math.isnan(theta.mean()):
+                    print shs is None
+                    theta = thprev
         stats = {}
-        stats["average_episode_std"] = average_episode_std
         stats["sum steps of episodes"] = sample_data["sum_episode_steps"]
         stats["Average sum of rewards per episode"] = episoderewards.mean()
         stats["Time elapsed"] = "%.2f mins" % ((time.time() - start_time) / 60.0)
-        stats["KL between old and new distribution"] = kloldnew
-        stats["Surrogate loss"] = surrafter
-        stats["Surrogate loss prev"] = surr_prev
-        stats["entropy"] = ent_prev
-        stats["mean_advant"] = mean_advant
-        return stats, theta-thprev
+        return stats, theta, thprev
 
     def learn(self):
         raise NotImplementedError

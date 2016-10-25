@@ -117,15 +117,16 @@ def linesearch(f, x, fullstep, expected_improve_rate):
     max_backtracks = 10
     fval, old_kl, entropy = f(x)
     for (_n_backtracks, stepfrac) in enumerate(.3**np.arange(max_backtracks)):
-        xnew = x - stepfrac * fullstep
+        xnew = x + stepfrac * fullstep
         newfval, new_kl, new_ent= f(xnew)
         # actual_improve = newfval - fval # minimize target object
         # expected_improve = expected_improve_rate * stepfrac
         # ratio = actual_improve / expected_improve
         # if ratio > accept_ratio and actual_improve > 0:
+        #     pms.max_kl *= 1.002
         #     return xnew
         if newfval<fval and new_kl<=pms.max_kl:
-            pms.max_kl *=1.002
+            pms.max_kl /=1.002
             return xnew
     return x
 
