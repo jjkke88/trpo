@@ -7,9 +7,9 @@ import numpy as np
 from environment import Environment
 
 # Flags for defining the tf.train.ClusterSpec
-tf.app.flags.DEFINE_string("ps_hosts", "127.0.0.1:2223",
+tf.app.flags.DEFINE_string("ps_hosts", "166.111.138.113:2223",
                            "Comma-separated list of hostname:port pairs")
-tf.app.flags.DEFINE_string("worker_hosts", "127.0.0.1:2226,127.0.0.1:2227",
+tf.app.flags.DEFINE_string("worker_hosts", "166.111.138.137:2226,166.111.138.137:2227,166.111.138.137:2228",
                            "Comma-separated list of hostname:port pairs")
 
 # Flags for defining the tf.train.Server
