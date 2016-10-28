@@ -25,12 +25,12 @@ checkpoint_file = None
 save_model_times = 1
 record_movie = False
 upload_to_gym = False
-checkpoint_dir="checkpoint_parallel"
+checkpoint_dir="checkpoint/"
 
 # for environment
 
 # environment_name = "MountainCarContinuous-v0"
-environment_name = "CartPole-v0"
+environment_name = "Pendulum-v0"
 
 # for continous action
 min_std = 1e-6

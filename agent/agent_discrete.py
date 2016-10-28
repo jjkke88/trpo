@@ -172,28 +172,26 @@ class TRPOAgent(object):
                 if iteration % pms.save_model_times == 0:
                     self.save_model(pms.environment_name + "-" + str(iteration))
 
-    def test(self, model_name="checkpoint/checkpoint"):
+    def test(self, model_name):
         self.load_model(model_name)
-        self.success_number = 0.0
-        test_iter_number = 50
-        for i in range(test_iter_number):
-            self.get_samples(1)
-            paths = self.storage.get_paths()
-            sample_data = self.storage.process_paths(paths)
-            max_reward = np.max(sample_data["rewards"])
-            # print "step number%d"%(len(sample_data["rewards"]))
-            # print "max reward%f" % (max_reward)
-            # print "everage reward%f"%(np.mean(sample_data["rewards"]))
-            # print "\n"
-            if max_reward > 0:
-                self.success_number += 1.0
-        print "success_rate%f" % (self.success_number / float(test_iter_number))
+        if pms.record_movie:
+            for i in range(100):
+                self.storage.get_single_path()
+            self.env.env.monitor.close()
+            if pms.upload_to_gym:
+                gym.upload("log/trpo" , algorithm_id='alg_8BgjkAsQRNiWu11xAhS4Hg' , api_key='sk_IJhy3b2QkqL3LWzgBXoVA')
+        else:
+            for i in range(50):
+                self.storage.get_single_path()
 
     def save_model(self, model_name):
-        self.saver.save(self.session, "checkpoint/" + model_name + ".ckpt")
+        self.saver.save(self.session, pms.checkpoint_dir + model_name + ".ckpt")
 
-    def load_model(self, model_name="checkpoint/checkpoint"):
+    def load_model(self, model_name):
         try:
-            self.saver.restore(self.session, model_name)
+            if model_name is not None:
+                self.saver.restore(self.session, model_name)
+            else:
+                self.saver.restore(self.session, tf.train.latest_checkpoint(pms.checkpoint_dir))
         except:
             print "load model %s fail" % (model_name)

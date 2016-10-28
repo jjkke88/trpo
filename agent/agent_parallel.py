@@ -12,7 +12,6 @@ class TRPOAgentParallel(TRPOAgentContinousBase):
 
     def __init__(self, env):
         super(TRPOAgentParallel, self).__init__(env)
-        self.global_step = tf.Variable(0, trainable=False)
         self.init_network()
         # self.saver = tf.train.Saver(max_to_keep=10)
 
@@ -30,6 +29,8 @@ class TRPOAgentParallel(TRPOAgentContinousBase):
         var_list
         """
         self.net = NetworkContinous("network_continous")
+        self.global_step = tf.Variable(0 , trainable=False)
+        self.step_op = tf.assign_add(self.global_step , 1 , use_locking=True)
         if pms.min_std is not None:
             log_std_var = tf.maximum(self.net.action_dist_logstds_n, np.log(pms.min_std))
         self.action_dist_stds_n = tf.exp(log_std_var)
@@ -82,4 +83,5 @@ class TRPOAgentParallel(TRPOAgentContinousBase):
                 print(k + ": " + " " * (40 - len(k)) + str(v))
             # if iter_num % pms.save_model_times == 0:
             #     self.save_model(pms.environment_name + "-" + str(iter_num))
+            self.session.run(self.step_op)
             iter_num += 1

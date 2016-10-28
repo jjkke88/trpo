@@ -14,7 +14,7 @@ tf.app.flags.DEFINE_string("worker_hosts", "166.111.138.137:2226,166.111.138.137
 
 # Flags for defining the tf.train.Server
 tf.app.flags.DEFINE_string("job_name", "worker", "ps or worker")
-tf.app.flags.DEFINE_integer("task_index",0, "Index of task within the job")
+tf.app.flags.DEFINE_integer("task_index",2, "Index of task within the job")
 
 FLAGS = tf.app.flags.FLAGS
 
