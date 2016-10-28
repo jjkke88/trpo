@@ -14,7 +14,7 @@ seed = 1
 np.random.seed(seed)
 tf.set_random_seed(seed)
 
-class TRPOAgentContinousBase(object):
+class TRPOAgentBase(object):
 
     def __init__(self, env):
         self.env = env

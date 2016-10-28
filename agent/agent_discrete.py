@@ -17,8 +17,8 @@ import gym
 from environment import Environment
 
 class TRPOAgent(object):
-    def __init__(self):
-        self.env = env = Environment(gym.make(pms.environment_name))
+    def __init__(self, env):
+        self.env = env
         # if not isinstance(env.observation_space, Box) or \
         #    not isinstance(env.action_space, Discrete):
         #     print("Incompatible spaces.")
@@ -84,8 +84,10 @@ class TRPOAgent(object):
             start += size
         gvp = [tf.reduce_sum(g * t) for (g, t) in zip(grads, tangents)]
         self.fvp = flatgrad(gvp, var_list)
-        self.gf = GetFlat(self.session, var_list)
-        self.sff = SetFromFlat(self.session, var_list)
+        self.gf = GetFlat(var_list)
+        self.gf.session = self.session
+        self.sff = SetFromFlat(var_list)
+        self.sff.session = self.session
         self.saver = tf.train.Saver(max_to_keep=10)
         self.session.run(tf.initialize_all_variables())
 
@@ -131,7 +133,7 @@ class TRPOAgent(object):
                     return self.session.run(self.fvp, feed) + pms.cg_damping * p
 
                 g = self.session.run(self.pg, feed_dict=feed)
-                stepdir = krylov.cg(fisher_vector_product, g)
+                stepdir = krylov.cg(fisher_vector_product, -g)
                 shs = 0.5 * stepdir.dot(fisher_vector_product(stepdir))  # theta
                 fullstep = stepdir * np.sqrt(2.0 * pms.max_kl / shs)
                 neggdotstepdir = -g.dot(stepdir)
@@ -167,7 +169,8 @@ class TRPOAgent(object):
                     self.logger.log_row(log_data)
                 for k, v in stats.iteritems():
                     print(k + ": " + " " * (40 - len(k)) + str(v))
-                self.save_model("iter" + str(iteration))
+                if iteration % pms.save_model_times == 0:
+                    self.save_model(pms.environment_name + "-" + str(iteration))
 
     def test(self, model_name="checkpoint/checkpoint"):
         self.load_model(model_name)
