@@ -14,8 +14,8 @@ class BaselineTfImage(object):
         self.x = tf.placeholder(tf.float32, shape=[None, shape[1], shape[2], shape[3]], name="x")
         self.y = tf.placeholder(tf.float32, shape=[None], name="y")
         self.net = (pt.wrap(self.x).
-                    conv2d(4, 16, stride=2, batch_normalize=True).
-                    conv2d(4, 16, stride=2, batch_normalize=True).
+                    conv2d(1, 16, stride=2, batch_normalize=True).
+                    conv2d(1, 16, stride=2, batch_normalize=True).
                     flatten().
                     fully_connected(32, activation_fn=tf.nn.relu).
                     fully_connected(32, activation_fn=tf.nn.relu).
@@ -28,7 +28,6 @@ class BaselineTfImage(object):
     def _features(self, path):
         ret = path["observations"].astype('float32')
         return ret
-
 
     def fit(self, paths):
         featmat = np.concatenate([self._features(path) for path in paths])

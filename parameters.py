@@ -8,7 +8,7 @@ history_number = 2
 # for trainning
 jobs = 2
 max_iter_number = 20000
-paths_number = 8
+paths_number = 1
 max_path_length = 199
 batch_size = max_path_length
 max_kl = 0.01

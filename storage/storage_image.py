@@ -19,10 +19,10 @@ class Storage(object):
         # self.agent.prev_action *= 0.0
         # self.agent.prev_obs *= 0.0
         episode_steps = 0
-        for _ in xrange(pms.max_pathlength):
+        for _ in xrange(pms.max_path_length):
             self.obs_origin.append(ob)
             deal_ob = self.deal_image(ob)
-            action, action_dist, ob = self.agent.act(deal_ob)
+            action, action_dist = self.agent.get_action(deal_ob)
             self.obs.append(deal_ob)
             actions.append(action)
             action_dists.append(action_dist)
@@ -36,8 +36,8 @@ class Storage(object):
             if res[2]:
                 break
         path = dict(
-            observations=np.concatenate(np.expand_dims(self.obs, 0)),
-            agent_infos=np.concatenate(action_dists),
+            observations=np.concatenate([self.obs]),
+            agent_infos=np.concatenate([action_dists]),
             rewards=np.array(rewards),
             actions=np.array(actions),
             episode_steps=episode_steps
@@ -104,4 +104,4 @@ class Storage(object):
         image_end = np.concatenate(image_end)
         # image_end = image_end.reshape((pms.obs_height, pms.obs_width, pms.history_number))
         obs = cv2.resize(cv2.cvtColor(image_end, cv2.COLOR_RGB2GRAY) / 255., (pms.obs_height, pms.obs_width))
-        return np.reshape(obs, (100,100,1))
+        return np.expand_dims(obs, 0)

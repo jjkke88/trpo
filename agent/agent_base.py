@@ -52,7 +52,7 @@ class TRPOAgentBase(object):
     def get_action(self, obs, *args):
         if self.net==None:
             raise NameError("network have not been defined")
-        obs = np.expand_dims(obs, 0)
+        # obs = np.expand_dims(obs, 0)
         # action_dist_logstd = np.expand_dims([np.log(pms.std)], 0)
         action_dist_means_n, action_dist_stds_n = self.session.run([self.net.action_dist_means_n, self.action_dist_stds_n],
                                                {self.net.obs: obs})
