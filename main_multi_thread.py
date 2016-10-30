@@ -6,7 +6,7 @@ from utils import *
 import numpy as np
 import tensorflow as tf
 import signal
-import parameters as pms
+from parameters import pms
 from logger.logger import Logger
 from agent.agent_cotinous_single_thread import TRPOAgentContinousSingleThread
 from network.network_continous import NetworkContinous

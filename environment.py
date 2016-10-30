@@ -7,7 +7,7 @@ import numpy as np
 from gym.spaces import Discrete, Box, Tuple
 from gym import Env
 import cv2
-import parameters as pms
+from parameters import pms
 import gym
 from gym.monitoring import monitor
 

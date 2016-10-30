@@ -4,7 +4,7 @@ import tensorflow as tf
 from network.network_continous_image import NetworkContinous
 from baseline.baseline_tf_image import BaselineTfImage
 from storage.storage_image import Storage
-import parameters as pms
+from parameters import pms
 from agent.agent_base import TRPOAgentBase
 
 seed = 1

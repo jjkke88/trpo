@@ -7,7 +7,7 @@ import tempfile
 import sys
 from environment import Environment
 from agent.agent_continous_image import TRPOAgent
-import parameters as pms
+from parameters import pms
 
 if not os.path.isdir("./checkpoint"):
     os.makedirs("./checkpoint")

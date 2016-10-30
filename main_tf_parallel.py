@@ -1,7 +1,7 @@
 #coding=utf-8
 import tensorflow as tf
 from agent.agent_parallel import TRPOAgentParallel
-import parameters as pms
+from parameters import pms
 import gym
 import numpy as np
 from environment import Environment

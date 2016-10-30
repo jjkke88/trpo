@@ -7,7 +7,7 @@ import tempfile
 import sys
 from environment import Environment
 from agent.agent_continous import TRPOAgent
-import parameters as pms
+from parameters import pms
 from utils import *
 import threading
 import gym
@@ -22,7 +22,7 @@ import multiprocessing
 from storage.storage_continous import Storage
 from storage.storage_continous import Rollout
 import math
-import parameters as pms
+from parameters import pms
 import krylov
 from logger.logger import Logger
 from agent.agent_continous_single_process import TRPOAgentContinousSingleProcess

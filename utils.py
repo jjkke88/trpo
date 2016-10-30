@@ -3,7 +3,7 @@ import tensorflow as tf
 import random
 import scipy.signal
 import prettytensor as pt
-import parameters as pms
+from parameters import pms
 import threading
 from tensorflow.contrib.layers.python.layers import initializers
 

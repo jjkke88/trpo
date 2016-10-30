@@ -11,7 +11,7 @@ import prettytensor as pt
 from storage.storage_continous import Storage
 from storage.storage_continous import Rollout
 import math
-import parameters as pms
+from parameters import pms
 import krylov
 from logger.logger import Logger
 from distribution.diagonal_gaussian import DiagonalGaussian
@@ -33,7 +33,7 @@ class TRPOAgentContinousSingleThread(TRPOAgentBase, threading.Thread):
         threading.Thread.__init__(self, name="thread_%d" % thread_id)
         self.master = master
         self.env = env = Environment(gym.make(pms.environment_name))
-        TRPOAgentContinousBase.__init__(self, env)
+        TRPOAgentBase.__init__(self, env)
 
         self.session = self.master.session
         self.init_network()

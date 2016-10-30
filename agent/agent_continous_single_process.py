@@ -12,7 +12,7 @@ import prettytensor as pt
 from storage.storage_continous import Storage
 from storage.storage_continous import Rollout
 import math
-import parameters as pms
+from parameters import pms
 import krylov
 from logger.logger import Logger
 from distribution.diagonal_gaussian import DiagonalGaussian

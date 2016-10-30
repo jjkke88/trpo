@@ -2,7 +2,7 @@ from utils import *
 import numpy as np
 import tensorflow as tf
 from network.network_continous import NetworkContinous
-import parameters as pms
+from parameters import pms
 from agent.agent_base import TRPOAgentBase
 
 seed = 1

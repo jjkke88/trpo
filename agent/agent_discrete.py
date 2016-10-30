@@ -10,7 +10,7 @@ import time
 import prettytensor as pt
 
 from storage.storage import Storage
-import parameters as pms
+from parameters import pms
 from distribution.diagonal_category import DiagonalCategory
 from baseline.baseline_lstsq import Baseline
 import gym

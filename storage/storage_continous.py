@@ -1,5 +1,5 @@
 from utils import *
-import parameters as pms
+from parameters import pms
 import threading
 import math
 

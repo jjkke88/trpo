@@ -2,7 +2,7 @@ from utils import *
 import numpy as np
 import tensorflow as tf
 import prettytensor as pt
-import parameters as pms
+from parameters import pms
 
 seed = 1
 np.random.seed(seed)

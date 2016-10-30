@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import prettytensor as pt
-import parameters as pms
+from parameters import pms
 
 class BaselineTfImage(object):
     coeffs = None
