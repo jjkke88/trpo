@@ -30,11 +30,12 @@ trust region policy optimitztion base on gym and tensorflow
 # recent work
 <ul>
 <li>imple multi-thread trpo run  python main_multi_thread.py to try</li>
+<li>imple tensorflow distributed trpo</li>
 </ul>
 
 # future work
 <ul>
-<li>imple tensorflow distributed trpo</li>
+<li>complete trpo with image as input</li>
 </ul>
 
 
