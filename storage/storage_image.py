@@ -22,7 +22,7 @@ class Storage(object):
         for _ in xrange(pms.max_path_length):
             self.obs_origin.append(ob)
             deal_ob = self.deal_image(ob)
-            action, action_dist = self.agent.get_action(deal_ob)
+            action, action_dist = self.agent.get_action([deal_ob])
             self.obs.append(deal_ob)
             actions.append(action)
             action_dists.append(action_dist)

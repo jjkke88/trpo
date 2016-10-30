@@ -3,12 +3,12 @@ import numpy as np
 import tensorflow as tf
 from network.network_continous import NetworkContinous
 import parameters as pms
-from agent.agent_continous_base import TRPOAgentContinousBase
+from agent.agent_base import TRPOAgentBase
 
 seed = 1
 np.random.seed(seed)
 tf.set_random_seed(seed)
-class TRPOAgentParallel(TRPOAgentContinousBase):
+class TRPOAgentParallel(TRPOAgentBase):
 
     def __init__(self, env):
         super(TRPOAgentParallel, self).__init__(env)

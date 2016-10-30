@@ -18,14 +18,14 @@ from distribution.diagonal_gaussian import DiagonalGaussian
 from baseline.baseline_lstsq import Baseline
 from environment import Environment
 from network.network_continous import NetworkContinous
-from agent.agent_continous_base import TRPOAgentContinousBase
+from agent.agent_base import TRPOAgentBase
 
 seed = 1
 np.random.seed(seed)
 tf.set_random_seed(seed)
 
 
-class TRPOAgentContinousSingleThread(TRPOAgentContinousBase, threading.Thread):
+class TRPOAgentContinousSingleThread(TRPOAgentBase, threading.Thread):
 
     def __init__(self, thread_id, master):
         print "create thread %d"%(thread_id)

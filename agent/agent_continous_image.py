@@ -5,12 +5,12 @@ from network.network_continous_image import NetworkContinous
 from baseline.baseline_tf_image import BaselineTfImage
 from storage.storage_image import Storage
 import parameters as pms
-from agent.agent_continous_base import TRPOAgentContinousBase
+from agent.agent_base import TRPOAgentBase
 
 seed = 1
 np.random.seed(seed)
 tf.set_random_seed(seed)
-class TRPOAgent(TRPOAgentContinousBase):
+class TRPOAgent(TRPOAgentBase):
 
     def __init__(self, env):
         super(TRPOAgent, self).__init__(env)
