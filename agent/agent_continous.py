@@ -4,6 +4,7 @@ import tensorflow as tf
 from network.network_continous import NetworkContinous
 from parameters import pms
 from agent.agent_base import TRPOAgentBase
+from logger.logger import Logger
 
 seed = 1
 np.random.seed(seed)
@@ -14,6 +15,7 @@ class TRPOAgent(TRPOAgentBase):
         super(TRPOAgent, self).__init__(env)
         self.init_network()
         self.saver = tf.train.Saver(max_to_keep=10)
+
 
     def init_network(self):
         """
@@ -71,13 +73,19 @@ class TRPOAgent(TRPOAgentBase):
         # self.saver = tf.train.Saver(max_to_keep=10)
         # self.load_model(pms.checkpoint_file)
 
+    def init_logger(self):
+        head = ["std", "rewards"]
+        self.logger = Logger(head)
+
     def learn(self):
+        self.init_logger()
         iter_num = 0
         while True:
             print "\n********** Iteration %i ************" % iter_num
             print self.gf().mean()
             stats, theta, thprev = self.train_mini_batch(linear_search=False)
             self.sff(theta)
+            self.logger.log_row([stats["Average sum of rewards per episode"], self.session.run(self.net.action_dist_logstd_param)])
             for k , v in stats.iteritems():
                 print(k + ": " + " " * (40 - len(k)) + str(v))
             if iter_num % pms.save_model_times == 0:

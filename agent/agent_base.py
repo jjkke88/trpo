@@ -145,6 +145,6 @@ class TRPOAgentBase(object):
             if model_name is not None:
                 self.saver.restore(self.session, model_name)
             else:
-                self.saver.restore(self.session, tf.train.latest_checkpoint(pms.checkpont_dir))
+                self.saver.restore(self.session, tf.train.latest_checkpoint(pms.checkpoint_dir))
         except:
             print "load model %s fail" % (model_name)
