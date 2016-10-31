@@ -43,14 +43,7 @@ class TRPOAgent(object):
         self.storage = Storage(self, self.env, self.baseline)
         self.distribution = DiagonalGaussian(pms.action_shape)
         self.init_network()
-        if pms.train_flag:
-            self.init_logger()
 
-    def init_logger(self):
-        head = ["average_episode_std", "sum steps episode number" "total number of episodes", "Average sum of rewards per episode",
-                "KL between old and new distribution", "Surrogate loss", "Surrogate loss prev", "ds", "entropy",
-                "mean_advant"]
-        self.logger = Logger(head)
 
     def init_network(self):
         self.obs = obs = tf.placeholder(

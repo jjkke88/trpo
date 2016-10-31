@@ -2,6 +2,7 @@ from utils import *
 import numpy as np
 import tensorflow as tf
 from network.network_continous import NetworkContinous
+from network.network_continous_rnn import NetworkContinousLSTM
 from parameters import pms
 from agent.agent_base import TRPOAgentBase
 from logger.logger import Logger
@@ -30,7 +31,7 @@ class TRPOAgent(TRPOAgentBase):
         self.action_dist_logstds_n
         var_list
         """
-        self.net = NetworkContinous("network_continous")
+        self.net = NetworkContinousLSTM("network_continous_lstm")
         if pms.min_std is not None:
             log_std_var = tf.maximum(self.net.action_dist_logstds_n, np.log(pms.min_std))
         self.action_dist_stds_n = tf.exp(log_std_var)
