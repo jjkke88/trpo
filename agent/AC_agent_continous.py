@@ -5,14 +5,16 @@ from network.network_continous import NetworkContinous
 from parameters import pms
 from agent.agent_base import TRPOAgentBase
 from logger.logger import Logger
+import math
+import time
 
 seed = 1
 np.random.seed(seed)
 tf.set_random_seed(seed)
-class TRPOAgent(TRPOAgentBase):
+class ACAgent(TRPOAgentBase):
 
     def __init__(self, env):
-        super(TRPOAgent, self).__init__(env)
+        super(ACAgent, self).__init__(env)
         self.init_network()
         self.saver = tf.train.Saver(max_to_keep=10)
 
@@ -30,16 +32,14 @@ class TRPOAgent(TRPOAgentBase):
         self.action_dist_logstds_n
         var_list
         """
-        self.net = NetworkContinous("network_continous")
+        self.net = NetworkContinous("network_continous_ac")
         if pms.min_std is not None:
             log_std_var = tf.maximum(self.net.action_dist_logstds_n, np.log(pms.min_std))
         self.action_dist_stds_n = tf.exp(log_std_var)
         self.old_dist_info_vars = dict(mean=self.net.old_dist_means_n, log_std=self.net.old_dist_logstds_n)
         self.new_dist_info_vars = dict(mean=self.net.action_dist_means_n, log_std=self.net.action_dist_logstds_n)
         self.likehood_action_dist = self.distribution.log_likelihood_sym(self.net.action_n, self.new_dist_info_vars)
-        self.ratio_n = self.distribution.likelihood_ratio_sym(self.net.action_n, self.new_dist_info_vars,
-                                                              self.old_dist_info_vars)
-        surr = -tf.reduce_mean(self.ratio_n * self.net.advant)  # Surrogate loss
+        surr = -tf.reduce_mean(self.likehood_action_dist*self.net.advant)  # Surrogate loss
         batch_size = tf.shape(self.net.obs)[0]
         batch_size_float = tf.cast(batch_size , tf.float32)
         kl = tf.reduce_mean(self.distribution.kl_sym(self.old_dist_info_vars, self.new_dist_info_vars))
@@ -53,22 +53,6 @@ class TRPOAgent(TRPOAgentBase):
         self.sff.session = self.session
         # get g
         self.pg = flatgrad(surr, var_list)
-        # get A
-        # KL divergence where first arg is fixed
-        # replace old->tf.stop_gradient from previous kl
-        kl_firstfixed = self.distribution.kl_sym_firstfixed(self.new_dist_info_vars) / batch_size_float
-        grads = tf.gradients(kl_firstfixed, var_list)
-        self.flat_tangent = tf.placeholder(dtype, shape=[None])
-        shapes = map(var_shape, var_list)
-        start = 0
-        tangents = []
-        for shape in shapes:
-            size = np.prod(shape)
-            param = tf.reshape(self.flat_tangent[start:(start + size)], shape)
-            tangents.append(param)
-            start += size
-        self.gvp = [tf.reduce_sum(g * t) for (g, t) in zip(grads, tangents)]
-        self.fvp = flatgrad(tf.reduce_sum(self.gvp), var_list)  # get kl''*p
         self.session.run(tf.initialize_all_variables())
         # self.saver = tf.train.Saver(max_to_keep=10)
         # self.load_model(pms.checkpoint_file)
@@ -77,12 +61,49 @@ class TRPOAgent(TRPOAgentBase):
         head = ["std", "rewards"]
         self.logger = Logger(head)
 
+    def train_mini_batch(self, parallel=False, linear_search=True):
+        # Generating paths.
+        print("Rollout")
+        start_time = time.time()
+        self.get_samples(pms.paths_number)
+        paths = self.storage.get_paths()  # get_paths
+        # Computing returns and estimating advantage function.
+        sample_data = self.storage.process_paths(paths)
+        agent_infos = sample_data["agent_infos"]
+        obs_n = sample_data["observations"]
+        action_n = sample_data["actions"]
+        advant_n = sample_data["advantages"]
+        n_samples = len(obs_n)
+        inds = np.random.choice(n_samples, int(math.floor(n_samples * pms.subsample_factor)), replace=False)
+        # inds = range(n_samples)
+        obs_n = obs_n[inds]
+        action_n = action_n[inds]
+        advant_n = advant_n[inds]
+        action_dist_means_n = np.array([agent_info["mean"] for agent_info in agent_infos[inds]])
+        action_dist_logstds_n = np.array([agent_info["log_std"] for agent_info in agent_infos[inds]])
+        feed = {self.net.obs: obs_n,
+                self.net.advant: advant_n,
+                self.net.old_dist_means_n: action_dist_means_n,
+                self.net.old_dist_logstds_n: action_dist_logstds_n,
+                self.net.action_n: action_n
+                }
+
+        episoderewards = np.array([path["rewards"].sum() for path in paths])
+        thprev = self.gf()  # get theta_old
+
+        g = self.session.run(self.pg, feed_dict=feed)
+        theta = thprev+0.1*g
+        stats = {}
+        stats["sum steps of episodes"] = sample_data["sum_episode_steps"]
+        stats["Average sum of rewards per episode"] = episoderewards.mean()
+        stats["Time elapsed"] = "%.2f mins" % ((time.time() - start_time) / 60.0)
+        return stats, theta, thprev
+
     def learn(self):
         self.init_logger()
         iter_num = 0
         while True:
             print "\n********** Iteration %i ************" % iter_num
-            print self.gf().mean()
             stats, theta, thprev = self.train_mini_batch(linear_search=False)
             self.sff(theta)
             self.logger.log_row([stats["Average sum of rewards per episode"], self.session.run(self.net.action_dist_logstd_param)])
