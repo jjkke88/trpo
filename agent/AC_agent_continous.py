@@ -39,7 +39,8 @@ class ACAgent(TRPOAgentBase):
         self.old_dist_info_vars = dict(mean=self.net.old_dist_means_n, log_std=self.net.old_dist_logstds_n)
         self.new_dist_info_vars = dict(mean=self.net.action_dist_means_n, log_std=self.net.action_dist_logstds_n)
         self.likehood_action_dist = self.distribution.log_likelihood_sym(self.net.action_n, self.new_dist_info_vars)
-        surr = -tf.reduce_mean(self.likehood_action_dist*self.net.advant)  # Surrogate loss
+        # surr = - log(\pi_\theta)*(Q^\pi-V^\pi)
+        surr = tf.reduce_mean(self.likehood_action_dist*tf.stop_gradient(self.net.advant))  # Surrogate loss
         batch_size = tf.shape(self.net.obs)[0]
         batch_size_float = tf.cast(batch_size , tf.float32)
         kl = tf.reduce_mean(self.distribution.kl_sym(self.old_dist_info_vars, self.new_dist_info_vars))
@@ -52,7 +53,7 @@ class ACAgent(TRPOAgentBase):
         self.sff = SetFromFlat(var_list)  # set theta from var_List
         self.sff.session = self.session
         # get g
-        self.pg = flatgrad(surr, var_list)
+        self.pg = flatgrad(-surr, var_list)
         self.session.run(tf.initialize_all_variables())
         # self.saver = tf.train.Saver(max_to_keep=10)
         # self.load_model(pms.checkpoint_file)
@@ -92,7 +93,7 @@ class ACAgent(TRPOAgentBase):
         thprev = self.gf()  # get theta_old
 
         g = self.session.run(self.pg, feed_dict=feed)
-        theta = thprev+0.1*g
+        theta = thprev+g
         stats = {}
         stats["sum steps of episodes"] = sample_data["sum_episode_steps"]
         stats["Average sum of rewards per episode"] = episoderewards.mean()
