@@ -44,12 +44,21 @@ class Storage(object):
         sum_episode_steps = 0
         for path in paths:
             sum_episode_steps += path['episode_steps']
-            path_baselines = np.append(self.baseline.predict(path) , 0)
             # r_t+V(S_{t+1})-V(S_t) = returns-baseline
-            path["advantages"] = np.concatenate(path["rewards"]) + \
-                                 pms.discount * path_baselines[1:] - \
-                                 path_baselines[:-1]
+            # path_baselines = np.append(self.baseline.predict(path) , 0)
+            # # r_t+V(S_{t+1})-V(S_t) = returns-baseline
+            # path["advantages"] = np.concatenate(path["rewards"]) + \
+            #          pms.discount * path_baselines[1:] - \
+            #          path_baselines[:-1]
+            # path["returns"] = np.concatenate(discount(path["rewards"], pms.discount))
+            path_baselines = np.append(self.baseline.predict(path) , 0)
+            deltas = np.concatenate(path["rewards"]) + \
+                     pms.discount * path_baselines[1:] - \
+                     path_baselines[:-1]
+            path["advantages"] = discount(
+                deltas , pms.discount * pms.gae_lambda)
             path["returns"] = np.concatenate(discount(path["rewards"] , pms.discount))
+
         # Updating policy.
         action_dist_n = np.concatenate([path["agent_infos"] for path in paths])
         obs_n = np.concatenate([path["observations"] for path in paths])

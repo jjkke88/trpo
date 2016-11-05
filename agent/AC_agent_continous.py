@@ -38,9 +38,9 @@ class ACAgent(TRPOAgentBase):
         self.action_dist_stds_n = tf.exp(log_std_var)
         self.old_dist_info_vars = dict(mean=self.net.old_dist_means_n, log_std=self.net.old_dist_logstds_n)
         self.new_dist_info_vars = dict(mean=self.net.action_dist_means_n, log_std=self.net.action_dist_logstds_n)
-        self.likehood_action_dist = self.distribution.log_likelihood_sym(self.net.action_n, self.new_dist_info_vars)
+        self.likehood_new_action_dist = self.distribution.log_likelihood_sym(self.net.action_n, self.new_dist_info_vars)
         # surr = - log(\pi_\theta)*(Q^\pi-V^\pi)
-        surr = tf.reduce_mean(self.likehood_action_dist*tf.stop_gradient(self.net.advant))  # Surrogate loss
+        surr = tf.reduce_sum(self.likehood_new_action_dist*tf.stop_gradient(self.net.advant))  # Surrogate loss
         batch_size = tf.shape(self.net.obs)[0]
         batch_size_float = tf.cast(batch_size , tf.float32)
         kl = tf.reduce_mean(self.distribution.kl_sym(self.old_dist_info_vars, self.new_dist_info_vars))
@@ -53,7 +53,7 @@ class ACAgent(TRPOAgentBase):
         self.sff = SetFromFlat(var_list)  # set theta from var_List
         self.sff.session = self.session
         # get g
-        self.pg = flatgrad(-surr, var_list)
+        self.pg = flatgrad(surr, var_list)
         self.session.run(tf.initialize_all_variables())
         # self.saver = tf.train.Saver(max_to_keep=10)
         # self.load_model(pms.checkpoint_file)
