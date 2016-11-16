@@ -1,105 +1,96 @@
-import os
-import logging
-import gym
-from gym import envs, scoreboard
-from gym.spaces import Discrete, Box
-import tempfile
-import sys
-from environment import Environment
-from agent.agent_continous import TRPOAgent
-from parameters import pms
-from utils import *
-import threading
-import gym
 import numpy as np
-import random
 import tensorflow as tf
-import time
-import threading
-import prettytensor as pt
-import signal
-import multiprocessing
-from storage.storage_continous import Storage
-from storage.storage_continous import Rollout
-import math
+import gym
+from utils import *
+from agent.agent_continous_parallel_storage import TRPOAgentParallel
+import argparse
+from rollouts import *
+import json
 from parameters import pms
-import krylov
-from logger.logger import Logger
-from agent.agent_continous_single_process import TRPOAgentContinousSingleProcess
-from distribution.diagonal_gaussian import DiagonalGaussian
+from storage.storage_continous_parallel import ParallelStorage
 from baseline.baseline_lstsq import Baseline
-from environment import Environment
-from network.network_continous import NetworkContinous
 
-seed = 1
-np.random.seed(seed)
-tf.set_random_seed(seed)
+args = pms
+args.max_pathlength = gym.spec(args.environment_name).timestep_limit
 
-training_dir = tempfile.mkdtemp()
-logging.getLogger().setLevel(logging.DEBUG)
+learner_tasks = multiprocessing.JoinableQueue()
+learner_results = multiprocessing.Queue()
+learner_env = gym.make(args.environment_name)
 
+learner = TRPOAgentParallel(learner_env.observation_space, learner_env.action_space, learner_tasks, learner_results)
+learner.start()
+rollouts = ParallelStorage(Baseline())
 
-class MasterContinous(object):
-    def __init__(self):
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1 / 3.0)
-        self.session = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+learner_tasks.put(1)
+learner_tasks.join()
+starting_weights = learner_results.get()
+rollouts.set_policy_weights(starting_weights)
 
-        self.network = NetworkContinous("master")
-        self.gf = GetFlat(self.session, self.network.var_list)  # get theta from var_list
-        self.sff = SetFromFlat(self.session, self.network.var_list)  # set theta from var_List
-        self.session.run(tf.initialize_all_variables())
-        self.saver = tf.train.Saver(max_to_keep=10)
+start_time = time.time()
+history = {}
+history["rollout_time"] = []
+history["learn_time"] = []
+history["mean_reward"] = []
+history["timesteps"] = []
 
-        self.init_jobs()
-        if pms.train_flag:
-            self.init_logger()
+# start it off with a big negative number
+last_reward = -1000000
+recent_total_reward = 0
 
-    def init_jobs(self):
-        self.jobs = []
+for iteration in xrange(args.max_iter_number):
+    # runs a bunch of async processes that collect rollouts
+    paths = rollouts.get_paths()
+    # Why is the learner in an async process?
+    # Well, it turns out tensorflow has an issue: when there's a tf.Session in the main thread
+    # and an async process creates another tf.Session, it will freeze up.
+    # To solve this, we just make the learner's tf.Session in its own async process,
+    # and wait until the learner's done before continuing the main thread.
+    learn_start = time.time()
+    learner_tasks.put((2, args.max_kl))
+    learner_tasks.put(paths)
+    learner_tasks.join()
+    stats , theta , thprev = learner_results.get()
+    learn_time = (time.time() - learn_start) / 60.0
+    print
+    print "-------- Iteration %d ----------" % iteration
+    # print "Total time: %.2f mins" % ((time.time() - start_time) / 60.0)
+    #
+    # history["rollout_time"].append(rollout_time)
+    # history["learn_time"].append(learn_time)
+    # history["mean_reward"].append(mean_reward)
+    # history["timesteps"].append(args.timesteps_per_batch)
+    for k , v in stats.iteritems():
+        print(k + ": " + " " * (40 - len(k)) + str(v))
+    recent_total_reward = stats["Average sum of rewards per episode"]
 
-        for thread_id in xrange(pms.jobs):
-            job = TRPOAgentContinousSingleProcess(thread_id, self)
-            job.daemon = True
-            self.jobs.append(job)
+    if args.decay_method == "adaptive":
+        if iteration % 10 == 0:
+            if recent_total_reward < last_reward:
+                print "Policy is not improving. Decrease KL and increase steps."
+                if args.max_kl > 0.001:
+                    args.max_kl -= args.kl_adapt
+            else:
+                print "Policy is improving. Increase KL and decrease steps."
+                if args.max_kl < 0.01:
+                    args.max_kl += args.kl_adapt
+            last_reward = recent_total_reward
+            recent_total_reward = 0
 
-    def init_logger(self):
-        head = ["average_episode_std", "sum steps episode number" "total number of episodes",
-                "Average sum of rewards per episode",
-                "KL between old and new distribution", "Surrogate loss", "Surrogate loss prev", "ds", "entropy",
-                "mean_advant"]
-        self.logger = Logger(head)
+    if args.decay_method == "linear":
+        if args.max_kl > 0.001:
+            args.max_kl -= args.kl_adapt
 
-    def get_parameters(self):
-        return self.gf()
+    if args.decay_method == "exponential":
+        if args.max_kl > 0.001:
+            args.max_kl *= args.kl_adapt
 
-    def apply_gradient(self, gradient):
-        theta_prev = self.gf()
-        theta_after = theta_prev + gradient
-        self.sff(theta_after)
+    # print "Current steps is " + str(args.timesteps_per_batch) + " and KL is " + str(args.max_kl)
+    #
+    # if iteration % 100 == 0:
+    #     with open("%s-%s-%f-%f" % (args.task, args.decay_method, args.kl_adapt, args.timestep_adapt), "w") as outfile:
+    #         json.dump(history,outfile)
 
-    def train(self):
-        signal.signal(signal.SIGINT, signal_handler)
-        pool = multiprocessing.Pool(processes=4)
-        for job in self.jobs:
-            pool.apply_async(job)
-        pool.close()
-        pool.join()
+    print theta.mean()
+    rollouts.set_policy_weights(theta)
 
-    def test(self):
-        self.jobs[0].test(pms.checkpoint_file)
-
-    def save_model(self, model_name):
-        self.saver.save(self.session, "checkpoint/" + model_name + ".ckpt")
-
-def signal_handler():
-    sys.exit(0)
-
-master = MasterContinous()
-
-if pms.train_flag:
-    master.train()
-else:
-    master.test()
-# env.monitor.close()
-# gym.upload(training_dir,
-#            algorithm_id='trpo_ff')
+rollouts.end()

@@ -57,7 +57,7 @@ class SetFromFlat(object):
         assigns = []
         shapes = map(var_shape, var_list)
         total_size = sum(np.prod(shape) for shape in shapes)
-        self.theta = theta = tf.placeholder(dtype, [total_size])
+        self.theta = theta = tf.placeholder(tf.float32, [total_size])
         start = 0
         assigns = []
         for (shape, v) in zip(shapes, var_list):
@@ -69,7 +69,7 @@ class SetFromFlat(object):
                         theta[
                             start:start +
                             size],
-                        shape), use_locking=True))
+                        shape)))
             start += size
         self.op = tf.group(*assigns)
 
@@ -78,7 +78,6 @@ class SetFromFlat(object):
 
 # get theta
 class GetFlat(object):
-
     def __init__(self, var_list):
         self.op = tf.concat(0, [tf.reshape(v, [numel(v)]) for v in var_list])
 

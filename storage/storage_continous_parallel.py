@@ -10,53 +10,59 @@ from parameters import pms
 import math
 from network.network_continous import NetworkContinous
 
+
 class Actor(multiprocessing.Process):
     def __init__(self, args, task_q, result_q, actor_id, monitor):
         multiprocessing.Process.__init__(self)
+        self.actor_id = actor_id
         self.task_q = task_q
         self.result_q = result_q
         self.args = args
-        self.net = NetworkContinous("rollout_network"+str(actor_id))
         self.monitor = monitor
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1 / 3.0)
-        self.session = tf.Session("grpc://127.0.0.1:2233")
+        # pms.max_path_length = gym.spec(args.environment_name).timestep_limit
+
 
     def get_action(self, obs):
         if self.net == None:
             raise NameError("network have not been defined")
         obs = np.expand_dims(obs , 0)
         # action_dist_logstd = np.expand_dims([np.log(pms.std)], 0)
-        action_dist_means_n , action_dist_stds_n = self.session.run(
-            [self.net.action_dist_means_n , tf.exp(self.net.action_dist_logstds_n)],
-            {self.net.obs: obs})
+        action_dist_means_n , action_dist_logstds_n = self.session.run(
+            [self.net.action_dist_means_n, self.net.action_dist_logstds_n], feed_dict={self.net.obs: obs})
         if pms.train_flag:
             rnd = np.random.normal(size=action_dist_means_n[0].shape)
-            action = rnd * action_dist_stds_n[0] + action_dist_means_n[0]
+            action = rnd * np.exp(action_dist_logstds_n[0]) + action_dist_means_n[0]
         else:
             action = action_dist_means_n[0]
         # action = np.clip(action, pms.min_a, pms.max_a)
-        return action , dict(mean=action_dist_means_n[0] , log_std=action_dist_stds_n[0])
+        return action , dict(mean=action_dist_means_n[0] , log_std=np.exp(action_dist_logstds_n[0]))
 
     def run(self):
+
         self.env = gym.make(self.args.environment_name)
         self.env.seed(randint(0,999999))
         if self.monitor:
             self.env.monitor.start('monitor/', force=True)
-        var_list = self.net.var_list
 
+        self.net = NetworkContinous("rollout_network" + str(self.actor_id))
+        config = tf.ConfigProto(
+            device_count={'GPU': 0}
+        )
+        self.session = tf.Session(config=config)
+        var_list = self.net.var_list
         self.session.run(tf.initialize_all_variables())
         self.set_policy = SetFromFlat(var_list)
-        self.set_policy.session =self.session
-
+        self.set_policy.session = self.session
         while True:
             # get a task, or wait until it gets one
             next_task = self.task_q.get(block=True)
-            if type(next_task) == int and next_task == 1:
+            if type(next_task) is int and next_task == 1:
                 # the task is an actor request to collect experience
                 path = self.rollout()
+                # print "single rollout time:"+str(end-start)
                 self.task_q.task_done()
                 self.result_q.put(path)
-            elif type(next_task) == int and next_task == 2:
+            elif type(next_task) is int and next_task == 2:
                 print "kill message"
                 if self.monitor:
                     self.env.monitor.close()
@@ -64,6 +70,7 @@ class Actor(multiprocessing.Process):
                 break
             else:
                 # the task is to set parameters of the actor policy
+                next_task = np.array(next_task)
                 self.set_policy(next_task)
                 # super hacky method to make sure when we fill the queue with set parameter tasks,
                 # an actor doesn't finish updating before the other actors can accept their own tasks.
@@ -83,7 +90,6 @@ class Actor(multiprocessing.Process):
         # if pms.record_movie:
         #     outdir = 'log/trpo'
         #     self.env.monitor.start(outdir , force=True)
-        print "rollout"
         observations = []
         actions = []
         rewards = []
@@ -93,21 +99,27 @@ class Actor(multiprocessing.Process):
             self.env.render()
         o = self.env.reset()
         episode_steps = 0
-        while episode_steps < pms.max_path_length:
-            a , agent_info = self.get_action(o)
-            if math.isnan(a) is not True:
-                next_o, reward, terminal, env_info = self.env.step(a)
-                observations.append(o)
-                rewards.append(np.array([reward]))
-                actions.append(a)
-                agent_infos.append([agent_info])
-                env_infos.append([env_info])
-                episode_steps += 1
-                if terminal:
-                    break
-                o = next_o
-                if pms.render:
-                    self.env.render()
+
+        for i in xrange(pms.max_path_length - 1):
+            a, agent_info = self.get_action(o)
+            next_o, reward, terminal, env_info = self.env.step(a)
+
+            observations.append(o)
+            rewards.append(np.array([reward]))
+            actions.append(a)
+
+            agent_infos.append([agent_info])
+            env_infos.append([])
+            episode_steps += 1
+
+
+            if terminal:
+                break
+            o = next_o
+            if pms.render:
+                self.env.render()
+
+
         path = dict(
             observations=np.array(observations) ,
             actions=np.array(actions) ,
@@ -119,7 +131,7 @@ class Actor(multiprocessing.Process):
         return path
 
 class ParallelStorage():
-    def __init__(self, agent, env, baseline, session=None):
+    def __init__(self, baseline):
         self.args = pms
         self.baseline = baseline
         self.tasks = multiprocessing.JoinableQueue()
@@ -136,17 +148,17 @@ class ParallelStorage():
     def get_paths(self):
         # keep 20,000 timesteps per update
         num_rollouts = self.args.paths_number
+        print "rollout_number:"+str(num_rollouts)
         for i in xrange(num_rollouts):
             self.tasks.put(1)
-
+        start = time.time()
         self.tasks.join()
-
+        end = time.time()
+        print "rollout real time"+str(end-start)
         paths = []
         while num_rollouts:
             num_rollouts -= 1
             paths.append(self.results.get())
-
-        self.average_timesteps_in_episode = sum([len(path["rewards"]) for path in paths]) / len(paths)
         return paths
 
     def process_paths(self, paths):

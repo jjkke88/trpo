@@ -66,50 +66,59 @@ class TRPOAgentBase(object):
 
     def train_mini_batch(self, parallel=False, linear_search=True):
         # Generating paths.
-        start_time = time.time()
+
         self.get_samples(pms.paths_number)
         paths = self.storage.get_paths()  # get_paths
         # Computing returns and estimating advantage function.
+        return self.train_sample_data(paths, parallel=parallel, linear_search=linear_search)
+
+
+    def train_paths(self, paths, parallel=False, linear_search=True):
+        start_time = time.time()
         sample_data = self.storage.process_paths(paths)
         agent_infos = sample_data["agent_infos"]
         obs_n = sample_data["observations"]
         action_n = sample_data["actions"]
         advant_n = sample_data["advantages"]
         n_samples = len(obs_n)
-        inds = np.random.choice(n_samples , int(math.floor(n_samples * pms.subsample_factor)), replace=False)
+        inds = np.random.choice(n_samples , int(math.floor(n_samples * pms.subsample_factor)) , replace=False)
         # inds = range(n_samples)
         obs_n = obs_n[inds]
         action_n = action_n[inds]
         advant_n = advant_n[inds]
         action_dist_means_n = np.array([agent_info["mean"] for agent_info in agent_infos[inds]])
         action_dist_logstds_n = np.array([agent_info["log_std"] for agent_info in agent_infos[inds]])
-        feed = {self.net.obs: obs_n,
-                self.net.advant: advant_n,
-                self.net.old_dist_means_n: action_dist_means_n,
-                self.net.old_dist_logstds_n: action_dist_logstds_n,
+        feed = {self.net.obs: obs_n ,
+                self.net.advant: advant_n ,
+                self.net.old_dist_means_n: action_dist_means_n ,
+                self.net.old_dist_logstds_n: action_dist_logstds_n ,
                 self.net.action_n: action_n
                 }
 
         episoderewards = np.array([path["rewards"].sum() for path in paths])
         thprev = self.gf()  # get theta_old
+
         def fisher_vector_product(p):
             feed[self.flat_tangent] = p
             return self.session.run(self.fvp , feed) + pms.cg_damping * p
+
         g = self.session.run(self.pg , feed_dict=feed)
-        stepdir = krylov.cg(fisher_vector_product, -g , cg_iters=pms.cg_iters)
+        stepdir = krylov.cg(fisher_vector_product , -g , cg_iters=pms.cg_iters)
         shs = 0.5 * stepdir.dot(fisher_vector_product(stepdir))  # theta
         # if shs<0, then the nan error would appear
         lm = np.sqrt(shs / pms.max_kl)
         fullstep = stepdir / lm
         neggdotstepdir = -g.dot(stepdir)
+
         def loss(th):
             self.sff(th)
             return self.session.run(self.losses , feed_dict=feed)
+
         if parallel is True:
-            theta = linesearch_parallel(loss, thprev , fullstep , neggdotstepdir/lm)
+            theta = linesearch_parallel(loss , thprev , fullstep , neggdotstepdir / lm)
         else:
             if linear_search:
-                theta = linesearch(loss , thprev , fullstep , neggdotstepdir/lm)
+                theta = linesearch(loss , thprev , fullstep , neggdotstepdir / lm)
             else:
                 theta = thprev + fullstep
                 if math.isnan(theta.mean()):
@@ -119,7 +128,7 @@ class TRPOAgentBase(object):
         stats["sum steps of episodes"] = sample_data["sum_episode_steps"]
         stats["Average sum of rewards per episode"] = episoderewards.mean()
         stats["Time elapsed"] = "%.2f mins" % ((time.time() - start_time) / 60.0)
-        return stats, theta, thprev
+        return stats , theta , thprev
 
     def learn(self):
         raise NotImplementedError

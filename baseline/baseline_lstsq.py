@@ -11,10 +11,11 @@ class Baseline(object):
         self._coeffs = val
 
     def _features(self, path):
-        o = np.clip(path["observations"], -10, 10)
+        o = path["observations"].astype('float32')
+        o = o.reshape(o.shape[0], -1)
         l = len(path["rewards"])
-        al = np.arange(l).reshape(-1, 1) / 100.0
-        return np.concatenate([o, o ** 2, al, al ** 2, al ** 3, np.ones((l, 1))], axis=1)
+        al = np.arange(l).reshape(-1 , 1) / 100.0
+        return np.concatenate([o, o ** 2, al, al ** 2, np.ones((l, 1))], axis=1)
 
     def fit(self, paths):
         featmat = np.concatenate([self._features(path) for path in paths])
