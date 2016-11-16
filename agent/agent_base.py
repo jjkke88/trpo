@@ -66,7 +66,6 @@ class TRPOAgentBase(object):
 
     def train_mini_batch(self, parallel=False, linear_search=True):
         # Generating paths.
-        print("Rollout")
         start_time = time.time()
         self.get_samples(pms.paths_number)
         paths = self.storage.get_paths()  # get_paths

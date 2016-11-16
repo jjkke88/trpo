@@ -1,0 +1,199 @@
+import numpy as np
+import tensorflow as tf
+import multiprocessing
+from utils import *
+import gym
+import time
+import copy
+from random import randint
+from parameters import pms
+import math
+from network.network_continous import NetworkContinous
+
+class Actor(multiprocessing.Process):
+    def __init__(self, args, task_q, result_q, actor_id, monitor):
+        multiprocessing.Process.__init__(self)
+        self.task_q = task_q
+        self.result_q = result_q
+        self.args = args
+        self.net = NetworkContinous("rollout_network"+str(actor_id))
+        self.monitor = monitor
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1 / 3.0)
+        self.session = tf.Session("grpc://127.0.0.1:2233")
+
+    def get_action(self, obs):
+        if self.net == None:
+            raise NameError("network have not been defined")
+        obs = np.expand_dims(obs , 0)
+        # action_dist_logstd = np.expand_dims([np.log(pms.std)], 0)
+        action_dist_means_n , action_dist_stds_n = self.session.run(
+            [self.net.action_dist_means_n , tf.exp(self.net.action_dist_logstds_n)],
+            {self.net.obs: obs})
+        if pms.train_flag:
+            rnd = np.random.normal(size=action_dist_means_n[0].shape)
+            action = rnd * action_dist_stds_n[0] + action_dist_means_n[0]
+        else:
+            action = action_dist_means_n[0]
+        # action = np.clip(action, pms.min_a, pms.max_a)
+        return action , dict(mean=action_dist_means_n[0] , log_std=action_dist_stds_n[0])
+
+    def run(self):
+        self.env = gym.make(self.args.environment_name)
+        self.env.seed(randint(0,999999))
+        if self.monitor:
+            self.env.monitor.start('monitor/', force=True)
+        var_list = self.net.var_list
+
+        self.session.run(tf.initialize_all_variables())
+        self.set_policy = SetFromFlat(var_list)
+        self.set_policy.session =self.session
+
+        while True:
+            # get a task, or wait until it gets one
+            next_task = self.task_q.get(block=True)
+            if type(next_task) == int and next_task == 1:
+                # the task is an actor request to collect experience
+                path = self.rollout()
+                self.task_q.task_done()
+                self.result_q.put(path)
+            elif type(next_task) == int and next_task == 2:
+                print "kill message"
+                if self.monitor:
+                    self.env.monitor.close()
+                self.task_q.task_done()
+                break
+            else:
+                # the task is to set parameters of the actor policy
+                self.set_policy(next_task)
+                # super hacky method to make sure when we fill the queue with set parameter tasks,
+                # an actor doesn't finish updating before the other actors can accept their own tasks.
+                time.sleep(0.1)
+                self.task_q.task_done()
+        return
+
+    def rollout(self):
+        """
+        :param:observations:obs list
+        :param:actions:action list
+        :param:rewards:reward list
+        :param:agent_infos: mean+log_std dictlist
+        :param:env_infos: no use, just information about environment
+        :return: a path, list
+        """
+        # if pms.record_movie:
+        #     outdir = 'log/trpo'
+        #     self.env.monitor.start(outdir , force=True)
+        print "rollout"
+        observations = []
+        actions = []
+        rewards = []
+        agent_infos = []
+        env_infos = []
+        if pms.render:
+            self.env.render()
+        o = self.env.reset()
+        episode_steps = 0
+        while episode_steps < pms.max_path_length:
+            a , agent_info = self.get_action(o)
+            if math.isnan(a) is not True:
+                next_o, reward, terminal, env_info = self.env.step(a)
+                observations.append(o)
+                rewards.append(np.array([reward]))
+                actions.append(a)
+                agent_infos.append([agent_info])
+                env_infos.append([env_info])
+                episode_steps += 1
+                if terminal:
+                    break
+                o = next_o
+                if pms.render:
+                    self.env.render()
+        path = dict(
+            observations=np.array(observations) ,
+            actions=np.array(actions) ,
+            rewards=np.array(rewards) ,
+            agent_infos=np.concatenate(agent_infos) ,
+            env_infos=np.concatenate(env_infos) ,
+            episode_steps=episode_steps
+        )
+        return path
+
+class ParallelStorage():
+    def __init__(self, agent, env, baseline, session=None):
+        self.args = pms
+        self.baseline = baseline
+        self.tasks = multiprocessing.JoinableQueue()
+        self.results = multiprocessing.Queue()
+        self.actors = []
+        self.actors.append(Actor(self.args, self.tasks, self.results, 9999, self.args.record_movie))
+        for i in xrange(self.args.jobs-1):
+            self.actors.append(Actor(self.args, self.tasks, self.results, 37*(i+3), False))
+        for a in self.actors:
+            a.start()
+        # we will start by running 20,000 / 1000 = 20 episodes for the first ieration
+        self.average_timesteps_in_episode = 1000
+
+    def get_paths(self):
+        # keep 20,000 timesteps per update
+        num_rollouts = self.args.paths_number
+        for i in xrange(num_rollouts):
+            self.tasks.put(1)
+
+        self.tasks.join()
+
+        paths = []
+        while num_rollouts:
+            num_rollouts -= 1
+            paths.append(self.results.get())
+
+        self.average_timesteps_in_episode = sum([len(path["rewards"]) for path in paths]) / len(paths)
+        return paths
+
+    def process_paths(self, paths):
+        sum_episode_steps = 0
+        for path in paths:
+            sum_episode_steps += path['episode_steps']
+            # r_t+V(S_{t+1})-V(S_t) = returns-baseline
+            # path_baselines = np.append(self.baseline.predict(path) , 0)
+            # # r_t+V(S_{t+1})-V(S_t) = returns-baseline
+            # path["advantages"] = np.concatenate(path["rewards"]) + \
+            #          pms.discount * path_baselines[1:] - \
+            #          path_baselines[:-1]
+            # path["returns"] = np.concatenate(discount(path["rewards"], pms.discount))
+            path_baselines = np.append(self.baseline.predict(path) , 0)
+            deltas = np.concatenate(path["rewards"]) + \
+                     pms.discount * path_baselines[1:] - \
+                     path_baselines[:-1]
+            path["advantages"] = discount(
+                deltas , pms.discount * pms.gae_lambda)
+            path["returns"] = np.concatenate(discount(path["rewards"] , pms.discount))
+        observations = np.concatenate([path["observations"] for path in paths])
+        actions = np.concatenate([path["actions"] for path in paths])
+        rewards = np.concatenate([path["rewards"] for path in paths])
+        advantages = np.concatenate([path["advantages"] for path in paths])
+        env_infos = np.concatenate([path["env_infos"] for path in paths])
+        agent_infos = np.concatenate([path["agent_infos"] for path in paths])
+        if pms.center_adv:
+            advantages -= np.mean(advantages)
+            advantages /= (advantages.std() + 1e-8)
+        samples_data = dict(
+            observations=observations ,
+            actions=actions ,
+            rewards=rewards ,
+            advantages=advantages ,
+            env_infos=env_infos ,
+            agent_infos=agent_infos ,
+            paths=paths ,
+            sum_episode_steps=sum_episode_steps
+        )
+        self.baseline.fit(paths)
+        return samples_data
+
+    def set_policy_weights(self, parameters):
+        for i in xrange(self.args.jobs):
+            self.tasks.put(parameters)
+        self.tasks.join()
+
+    def end(self):
+        for i in xrange(self.args.jobs):
+            self.tasks.put(2)

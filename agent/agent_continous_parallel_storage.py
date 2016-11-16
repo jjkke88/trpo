@@ -10,12 +10,16 @@ from storage.storage_continous_parallel import ParallelStorage
 seed = 1
 np.random.seed(seed)
 tf.set_random_seed(seed)
-class TRPOAgent(TRPOAgentBase):
 
-    def __init__(self, env):
-        super(TRPOAgent, self).__init__(env)
+
+class TRPOAgent(TRPOAgentBase):
+    def __init__(self , env):
+        super(TRPOAgent , self).__init__(env)
+        self.session = tf.Session("grpc://localhost:2233")
         self.init_network()
         self.saver = tf.train.Saver(max_to_keep=10)
+        self.storage = ParallelStorage(self, self.env, self.baseline)
+        # Create a cluster from the parameter server and worker hosts.
 
 
 
@@ -34,60 +38,64 @@ class TRPOAgent(TRPOAgentBase):
         """
         self.net = NetworkContinous("network_continous")
         if pms.min_std is not None:
-            log_std_var = tf.maximum(self.net.action_dist_logstds_n, np.log(pms.min_std))
+            log_std_var = tf.maximum(self.net.action_dist_logstds_n , np.log(pms.min_std))
         self.action_dist_stds_n = tf.exp(log_std_var)
-        self.old_dist_info_vars = dict(mean=self.net.old_dist_means_n, log_std=self.net.old_dist_logstds_n)
-        self.new_dist_info_vars = dict(mean=self.net.action_dist_means_n, log_std=self.net.action_dist_logstds_n)
-        self.likehood_action_dist = self.distribution.log_likelihood_sym(self.net.action_n, self.new_dist_info_vars)
-        self.ratio_n = self.distribution.likelihood_ratio_sym(self.net.action_n, self.new_dist_info_vars,
+        self.old_dist_info_vars = dict(mean=self.net.old_dist_means_n , log_std=self.net.old_dist_logstds_n)
+        self.new_dist_info_vars = dict(mean=self.net.action_dist_means_n , log_std=self.net.action_dist_logstds_n)
+        self.likehood_action_dist = self.distribution.log_likelihood_sym(self.net.action_n , self.new_dist_info_vars)
+        self.ratio_n = self.distribution.likelihood_ratio_sym(self.net.action_n , self.new_dist_info_vars ,
                                                               self.old_dist_info_vars)
         surr = -tf.reduce_sum(self.ratio_n * self.net.advant)  # Surrogate loss
         batch_size = tf.shape(self.net.obs)[0]
         batch_size_float = tf.cast(batch_size , tf.float32)
-        kl = tf.reduce_mean(self.distribution.kl_sym(self.old_dist_info_vars, self.new_dist_info_vars))
+        kl = tf.reduce_mean(self.distribution.kl_sym(self.old_dist_info_vars , self.new_dist_info_vars))
         ent = self.distribution.entropy(self.old_dist_info_vars)
         # ent = tf.reduce_sum(-p_n * tf.log(p_n + eps)) / Nf
-        self.losses = [surr, kl, ent]
+        self.losses = [surr , kl , ent]
         var_list = self.net.var_list
         self.gf = GetFlat(var_list)  # get theta from var_list
         self.gf.session = self.session
         self.sff = SetFromFlat(var_list)  # set theta from var_List
         self.sff.session = self.session
         # get g
-        self.pg = flatgrad(surr, var_list)
+        self.pg = flatgrad(surr , var_list)
         # get A
         # KL divergence where first arg is fixed
         # replace old->tf.stop_gradient from previous kl
         kl_firstfixed = self.distribution.kl_sym_firstfixed(self.new_dist_info_vars) / batch_size_float
-        grads = tf.gradients(kl_firstfixed, var_list)
-        self.flat_tangent = tf.placeholder(dtype, shape=[None])
-        shapes = map(var_shape, var_list)
+        grads = tf.gradients(kl_firstfixed , var_list)
+        self.flat_tangent = tf.placeholder(dtype , shape=[None])
+        shapes = map(var_shape , var_list)
         start = 0
         tangents = []
         for shape in shapes:
             size = np.prod(shape)
-            param = tf.reshape(self.flat_tangent[start:(start + size)], shape)
+            param = tf.reshape(self.flat_tangent[start:(start + size)] , shape)
             tangents.append(param)
             start += size
-        self.gvp = [tf.reduce_sum(g * t) for (g, t) in zip(grads, tangents)]
-        self.fvp = flatgrad(tf.reduce_sum(self.gvp), var_list)  # get kl''*p
+        self.gvp = [tf.reduce_sum(g * t) for (g , t) in zip(grads , tangents)]
+        self.fvp = flatgrad(tf.reduce_sum(self.gvp) , var_list)  # get kl''*p
         self.session.run(tf.initialize_all_variables())
         # self.saver = tf.train.Saver(max_to_keep=10)
         # self.load_model(pms.checkpoint_file)
 
     def init_logger(self):
-        head = ["std", "rewards"]
+        head = ["std" , "rewards"]
         self.logger = Logger(head)
+
+    def get_samples(self , path_number):
+        print "get_samples"
 
     def learn(self):
         self.init_logger()
         iter_num = 0
         while True:
             print "\n********** Iteration %i ************" % iter_num
-            print self.gf().mean()
+            self.storage.set_policy_weights(self.gf())
             stats, theta, thprev = self.train_mini_batch(linear_search=False)
             self.sff(theta)
-            self.logger.log_row([stats["Average sum of rewards per episode"], self.session.run(self.net.action_dist_logstd_param)])
+            self.logger.log_row(
+                [stats["Average sum of rewards per episode"] , self.session.run(self.net.action_dist_logstd_param)])
             for k , v in stats.iteritems():
                 print(k + ": " + " " * (40 - len(k)) + str(v))
             if iter_num % pms.save_model_times == 0:

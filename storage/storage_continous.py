@@ -131,10 +131,10 @@ class Storage(object):
 
 
 class Rollout(threading.Thread):
-    def __init__(self, thread_number, storage):
+    def __init__(self, thread_number, agent, env, baseline):
         super(Rollout, self).__init__()
         self.thread_number = thread_number
-        self.storage = storage
+        self.storage = Storage(agent, env, baseline)
 
     def run(self):
         self.storage.get_single_path()
