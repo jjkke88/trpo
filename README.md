@@ -31,6 +31,7 @@ trust region policy optimitztion base on gym and tensorflow
 <ul>
 <li>imple multi-thread trpo run  python main_multi_thread.py to try</li>
 <li>imple tensorflow distributed trpo</li>
+<li>imple trpo multi-process</li>
 </ul>
 
 # future work
