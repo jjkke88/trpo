@@ -111,8 +111,6 @@ class Actor(multiprocessing.Process):
             agent_infos.append([agent_info])
             env_infos.append([])
             episode_steps += 1
-
-
             if terminal:
                 break
             o = next_o

@@ -6,5 +6,6 @@
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module" module-name="rllab" />
     <orderEntry type="module" module-name="parallel-trpo" />
+    <orderEntry type="module" module-name="gym" />
   </component>
 </module>

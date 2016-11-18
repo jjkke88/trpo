@@ -70,7 +70,7 @@ class TRPOAgentBase(object):
         self.get_samples(pms.paths_number)
         paths = self.storage.get_paths()  # get_paths
         # Computing returns and estimating advantage function.
-        return self.train_sample_data(paths, parallel=parallel, linear_search=linear_search)
+        return self.train_paths(paths, parallel=parallel, linear_search=linear_search)
 
 
     def train_paths(self, paths, parallel=False, linear_search=True):
