@@ -51,7 +51,7 @@ class TRPOAgentParallel(multiprocessing.Process):
         self.likehood_action_dist = self.distribution.log_likelihood_sym(self.net.action_n , self.new_dist_info_vars)
         self.ratio_n = self.distribution.likelihood_ratio_sym(self.net.action_n , self.new_dist_info_vars ,
                                                               self.old_dist_info_vars)
-        surr = -tf.reduce_sum(self.ratio_n * self.net.advant)  # Surrogate loss
+        surr = -tf.reduce_mean(self.ratio_n * self.net.advant)  # Surrogate loss
         batch_size = tf.shape(self.net.obs)[0]
         batch_size_float = tf.cast(batch_size, tf.float32)
         kl = (self.distribution.kl_sym(self.old_dist_info_vars , self.new_dist_info_vars))/batch_size_float

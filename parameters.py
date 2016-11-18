@@ -25,7 +25,7 @@ flags.DEFINE_integer('save_model_times', 1, 'iteration number to save model, if 
 flags.DEFINE_boolean('record_movie', False, 'whether record the video in gym')
 flags.DEFINE_boolean('upload_to_gym', False, 'whether upload the result to gym')
 flags.DEFINE_string('checkpoint_dir', 'checkpoint/', 'checkpoint save and load path, for parallel, it should be checkpoint_parallel')
-flags.DEFINE_string('environment_name', 'Pendulum-v0', 'environment name')
+flags.DEFINE_string('environment_name', 'MountainCar-v0', 'environment name')
 flags.DEFINE_float('min_std', 1e-6, 'the smallest std')
 flags.DEFINE_boolean('center_adv', True, 'whether center advantage, fixed')
 flags.DEFINE_boolean('positive_adv', False, 'whether positive advantage, fixed')
