@@ -86,6 +86,7 @@ class TRPOAgentParallel(multiprocessing.Process):
         self.gvp = [tf.reduce_sum(g * t) for (g , t) in zip(grads , tangents)]
         self.fvp = flatgrad(tf.reduce_sum(self.gvp) , var_list)  # get kl''*p
         self.session.run(tf.initialize_all_variables())
+        self.saver = tf.train.Saver(max_to_keep=5)
 
     def run(self):
         self.init_network()
@@ -102,6 +103,9 @@ class TRPOAgentParallel(multiprocessing.Process):
             elif paths[0] == 2:
                 # adjusting the max KL.
                 self.args.max_kl = paths[1]
+                if paths[2] == 1:
+                    print "saving checkpoint..."
+                    self.save_model(pms.environment_name + "-" + str(paths[3]))
                 self.task_q.task_done()
             else:
                 stats , theta , thprev = self.learn(paths)
@@ -244,3 +248,15 @@ class TRPOAgentParallel(multiprocessing.Process):
 #                 self.task_q.task_done()
 #                 self.result_q.put((stats, theta, thprev))
 #         return
+
+    def save_model(self , model_name):
+        self.saver.save(self.session , "checkpoint/" + model_name + ".ckpt")
+
+    def load_model(self , model_name):
+        try:
+            if model_name is not None:
+                self.saver.restore(self.session , model_name)
+            else:
+                self.saver.restore(self.session , tf.train.latest_checkpoint(pms.checkpoint_dir))
+        except:
+            print "load model %s fail" % (model_name)
