@@ -14,7 +14,7 @@ class Baseline(object):
         self.x = tf.placeholder(tf.float32 , shape=[None , shape] , name="x")
         self.y = tf.placeholder(tf.float32 , shape=[None] , name="y")
         self.net = (pt.wrap(self.x).
-                    fully_connected(64 , activation_fn=tf.nn.relu).
+                    fully_connected(64 , activation_fn=tf.nn.tanh).
                     fully_connected(1))
         self.net = tf.reshape(self.net , (-1 ,))
         self.l2 = (self.net - self.y) * (self.net - self.y)
@@ -22,21 +22,21 @@ class Baseline(object):
         self.session.run(tf.initialize_all_variables())
 
     def _features(self, path):
-        obs = path["observations"]
+        o = path["observations"].astype('float32')
+        o = o.reshape(o.shape[0] , -1)
         l = len(path["rewards"])
-        al = np.arange(l).reshape(-1, 1) / 10.0
-        ret = np.concatenate([obs, al, np.ones((l, 1))], axis=1)
-        return ret
+        al = np.arange(l).reshape(-1 , 1) / 100.0
+        return np.concatenate([o , o ** 2 , al , al ** 2 , np.ones((l , 1))] , axis=1)
 
-    def fit(self , paths):
+    def fit(self, paths):
         featmat = np.concatenate([self._features(path) for path in paths])
         if self.net is None:
             self.create_net(featmat.shape[1])
         returns = np.concatenate([path["returns"] for path in paths])
-        for _ in range(100):
+        for _ in range(10):
             loss, _ = self.session.run([self.l2, self.train], {self.x: featmat , self.y: returns})
 
-    def predict(self , path):
+    def predict(self, path):
         if self.net is None:
             return np.zeros(len(path["rewards"]))
         else:

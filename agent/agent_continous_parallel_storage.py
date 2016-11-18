@@ -191,6 +191,7 @@ class TRPOAgentParallel(multiprocessing.Process):
             path["advantages"] = discount(
                 deltas , pms.discount * pms.gae_lambda)
             path["returns"] = np.concatenate(discount(path["rewards"] , pms.discount))
+            path["advantages"] = path["returns"]
 
         observations = np.concatenate([path["observations"] for path in paths])
         actions = np.concatenate([path["actions"] for path in paths])

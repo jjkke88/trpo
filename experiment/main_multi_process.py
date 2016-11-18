@@ -1,3 +1,9 @@
+import os
+if not os.path.isdir("./checkpoint"):
+    os.makedirs("./checkpoint")
+if not os.path.isdir("./log"):
+    os.makedirs("./log")
+
 import numpy as np
 import tensorflow as tf
 import gym
