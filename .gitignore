@@ -4,3 +4,5 @@ logs_*
 checkpoint/
 checkpoint_parallel/
 log/
+.idea/
+.idea

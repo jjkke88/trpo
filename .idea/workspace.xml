@@ -12,18 +12,6 @@
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/../parallel-trpo/model.py" afterPath="$PROJECT_DIR$/../parallel-trpo/model.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/../parallel-trpo/rollouts.py" afterPath="$PROJECT_DIR$/../parallel-trpo/rollouts.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/../parallel-trpo/value_function.py" afterPath="$PROJECT_DIR$/../parallel-trpo/value_function.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/modules.xml" afterPath="$PROJECT_DIR$/.idea/modules.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/trpo-wyp.iml" afterPath="$PROJECT_DIR$/.idea/trpo-wyp.iml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/vcs.xml" afterPath="$PROJECT_DIR$/.idea/vcs.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agent/agent_base.py" afterPath="$PROJECT_DIR$/agent/agent_base.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agent/agent_continous_parallel_storage.py" afterPath="$PROJECT_DIR$/agent/agent_continous_parallel_storage.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/baseline/baseline_lstsq.py" afterPath="$PROJECT_DIR$/baseline/baseline_lstsq.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/experiment/main_multi_process.py" afterPath="$PROJECT_DIR$/experiment/main_multi_process.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/network/network_continous.py" afterPath="$PROJECT_DIR$/network/network_continous.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/parameters.py" afterPath="$PROJECT_DIR$/parameters.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/storage/storage_continous_parallel.py" afterPath="$PROJECT_DIR$/storage/storage_continous_parallel.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/utils.py" afterPath="$PROJECT_DIR$/utils.py" />
       <change type="MODIFICATION" beforePath="$USER_HOME$/rllab/docker/Dockerfile" afterPath="$USER_HOME$/rllab/docker/Dockerfile" />
       <change type="MODIFICATION" beforePath="$USER_HOME$/rllab/rllab/algos/npo.py" afterPath="$USER_HOME$/rllab/rllab/algos/npo.py" />
     </list>
@@ -582,7 +570,7 @@
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="7" side_tool="true" content_ui="tabs" />
       <window_info id="Python Console" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
       <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
-      <window_info id="Run" active="true" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.30686694" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
+      <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.30686694" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
       <window_info id="Favorites" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="true" content_ui="tabs" />
