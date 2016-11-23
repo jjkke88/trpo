@@ -20,7 +20,7 @@ trust region policy optimitztion base on gym and tensorflow
 <li>logger:have a Logger class for log data to .csv file</li>
 <li>agent:for disperse action space and continous action space</li>
 <li>log:store log file</li>
-<li>main.py: main file, run this file can start trainning or testing</li>
+<li>experiment: contain many different main file, run main file can start trainning or testing</li>
 <li>environment.py: environment</li>
 <li>krylov.py: implement of some math method:conjugate gradient descent , calculating hessian matrix</li>
 <li>parameters.py: config file</li>
