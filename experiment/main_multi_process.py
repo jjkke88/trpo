@@ -4,17 +4,13 @@ if not os.path.isdir("./checkpoint"):
 if not os.path.isdir("./log"):
     os.makedirs("./log")
 
-import numpy as np
-import tensorflow as tf
+
 import gym
-from utils import *
+import multiprocessing
+import time
 from agent.agent_continous_parallel_storage import TRPOAgentParallel
-import argparse
-from rollouts import *
-import json
 from parameters import pms
 from storage.storage_continous_parallel import ParallelStorage
-from baseline.baseline_lstsq import Baseline
 
 args = pms
 args.max_pathlength = gym.spec(args.environment_name).timestep_limit
@@ -25,7 +21,7 @@ learner_env = gym.make(args.environment_name)
 
 learner = TRPOAgentParallel(learner_env.observation_space, learner_env.action_space, learner_tasks, learner_results)
 learner.start()
-rollouts = ParallelStorage(Baseline())
+rollouts = ParallelStorage()
 
 learner_tasks.put(1)
 learner_tasks.join()
@@ -71,7 +67,7 @@ if pms.train_flag is True:
         # history["timesteps"].append(args.timesteps_per_batch)
         for k , v in stats.iteritems():
             print(k + ": " + " " * (40 - len(k)) + str(v))
-        recent_total_reward = stats["Average sum of rewards per episode"]
+        recent_total_reward += stats["Average sum of rewards per episode"]
 
         if args.decay_method == "adaptive":
             if iteration % 10 == 0:
@@ -93,12 +89,6 @@ if pms.train_flag is True:
         if args.decay_method == "exponential":
             if args.max_kl > 0.001:
                 args.max_kl *= args.kl_adapt
-
-        # print "Current steps is " + str(args.timesteps_per_batch) + " and KL is " + str(args.max_kl)
-        #
-        # if iteration % 100 == 0:
-        #     with open("%s-%s-%f-%f" % (args.task, args.decay_method, args.kl_adapt, args.timestep_adapt), "w") as outfile:
-        #         json.dump(history,outfile)
         rollouts.set_policy_weights(theta)
 else:
     from agent.agent_continous import TRPOAgent

@@ -10,6 +10,10 @@ from agent.agent_base import TRPOAgentBase
 seed = 1
 np.random.seed(seed)
 tf.set_random_seed(seed)
+
+"""
+class for continoust action space with image as input
+"""
 class TRPOAgent(TRPOAgentBase):
 
     def __init__(self, env):

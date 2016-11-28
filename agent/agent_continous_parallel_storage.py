@@ -10,15 +10,18 @@ from baseline.baseline_lstsq import Baseline
 from distribution.diagonal_gaussian import DiagonalGaussian
 import time
 import math
-from agent.agent_continous import TRPOAgent
 
 seed = 1
 np.random.seed(seed)
 tf.set_random_seed(seed)
-from environment import Environment
-import gym
 
+
+"""
+class for continoust action space in multi process
+"""
 class TRPOAgentParallel(multiprocessing.Process):
+
+
     def __init__(self , observation_space , action_space , task_q , result_q):
         multiprocessing.Process.__init__(self)
         self.task_q = task_q
@@ -31,60 +34,61 @@ class TRPOAgentParallel(multiprocessing.Process):
 
     def init_network(self):
         """
-            [input]
-            self.obs
-            self.action_n
-            self.advant
-            self.old_dist_means_n
-            self.old_dist_logstds_n
-            [output]
-            self.action_dist_means_n
-            self.action_dist_logstds_n
-            var_list
-            """
-        self.net = NetworkContinous("network_continous")
-        if pms.min_std is not None:
-            log_std_var = tf.maximum(self.net.action_dist_logstds_n , np.log(pms.min_std))
-        self.action_dist_stds_n = tf.exp(log_std_var)
-        self.old_dist_info_vars = dict(mean=self.net.old_dist_means_n , log_std=self.net.old_dist_logstds_n)
-        self.new_dist_info_vars = dict(mean=self.net.action_dist_means_n , log_std=self.net.action_dist_logstds_n)
-        self.likehood_action_dist = self.distribution.log_likelihood_sym(self.net.action_n , self.new_dist_info_vars)
-        self.ratio_n = self.distribution.likelihood_ratio_sym(self.net.action_n , self.new_dist_info_vars ,
-                                                              self.old_dist_info_vars)
-        surr = -tf.reduce_mean(self.ratio_n * self.net.advant)  # Surrogate loss
-        batch_size = tf.shape(self.net.obs)[0]
-        batch_size_float = tf.cast(batch_size, tf.float32)
-        kl = (self.distribution.kl_sym(self.old_dist_info_vars , self.new_dist_info_vars))/batch_size_float
-        ent = tf.reduce_sum(self.net.action_dist_logstds_n + tf.constant(0.5*np.log(2*np.pi*np.e), tf.float32))/batch_size_float
-        # ent = tf.reduce_sum(-p_n * tf.log(p_n + eps)) / Nf
-        self.losses = [surr , kl , ent]
-        var_list = self.net.var_list
+        [input]
+        self.obs
+        self.action_n
+        self.advant
+        self.old_dist_means_n
+        self.old_dist_logstds_n
+        [output]
+        self.action_dist_means_n
+        self.action_dist_logstds_n
+        var_list
+        """
         config = tf.ConfigProto(
             device_count={'GPU': 0}
         )
         self.session = tf.Session(config=config)
+        self.net = NetworkContinous("network_continous")
+        if pms.min_std is not None:
+            log_std_var = tf.maximum(self.net.action_dist_logstds_n, np.log(pms.min_std))
+        self.action_dist_stds_n = tf.exp(log_std_var)
+        self.old_dist_info_vars = dict(mean=self.net.old_dist_means_n, log_std=self.net.old_dist_logstds_n)
+        self.new_dist_info_vars = dict(mean=self.net.action_dist_means_n, log_std=self.net.action_dist_logstds_n)
+        self.likehood_action_dist = self.distribution.log_likelihood_sym(self.net.action_n, self.new_dist_info_vars)
+        self.ratio_n = self.distribution.likelihood_ratio_sym(self.net.action_n, self.new_dist_info_vars,
+                                                              self.old_dist_info_vars)
+        surr = -tf.reduce_sum(self.ratio_n * self.net.advant)  # Surrogate loss
+        batch_size = tf.shape(self.net.obs)[0]
+        batch_size_float = tf.cast(batch_size , tf.float32)
+        kl = tf.reduce_mean(self.distribution.kl_sym(self.old_dist_info_vars, self.new_dist_info_vars))
+        ent = self.distribution.entropy(self.old_dist_info_vars)
+        # ent = tf.reduce_sum(-p_n * tf.log(p_n + eps)) / Nf
+        self.losses = [surr, kl, ent]
+        var_list = self.net.var_list
+
         self.gf = GetFlat(var_list)  # get theta from var_list
         self.gf.session = self.session
         self.sff = SetFromFlat(var_list)  # set theta from var_List
         self.sff.session = self.session
         # get g
-        self.pg = flatgrad(surr , var_list)
+        self.pg = flatgrad(surr, var_list)
         # get A
         # KL divergence where first arg is fixed
         # replace old->tf.stop_gradient from previous kl
         kl_firstfixed = self.distribution.kl_sym_firstfixed(self.new_dist_info_vars) / batch_size_float
-        grads = tf.gradients(kl_firstfixed , var_list)
-        self.flat_tangent = tf.placeholder(dtype , shape=[None])
-        shapes = map(var_shape , var_list)
+        grads = tf.gradients(kl_firstfixed, var_list)
+        self.flat_tangent = tf.placeholder(dtype, shape=[None])
+        shapes = map(var_shape, var_list)
         start = 0
         tangents = []
         for shape in shapes:
             size = np.prod(shape)
-            param = tf.reshape(self.flat_tangent[start:(start + size)] , shape)
+            param = tf.reshape(self.flat_tangent[start:(start + size)], shape)
             tangents.append(param)
             start += size
-        self.gvp = [tf.reduce_sum(g * t) for (g , t) in zip(grads , tangents)]
-        self.fvp = flatgrad(tf.reduce_sum(self.gvp) , var_list)  # get kl''*p
+        self.gvp = [tf.reduce_sum(g * t) for (g, t) in zip(grads, tangents)]
+        self.fvp = flatgrad(tf.reduce_sum(self.gvp), var_list)  # get kl''*p
         self.session.run(tf.initialize_all_variables())
         self.saver = tf.train.Saver(max_to_keep=5)
 
@@ -108,33 +112,31 @@ class TRPOAgentParallel(multiprocessing.Process):
                     self.save_model(pms.environment_name + "-" + str(paths[3]))
                 self.task_q.task_done()
             else:
-                stats , theta , thprev = self.learn(paths)
+                stats , theta, thprev = self.learn(paths)
                 self.sff(theta)
                 self.task_q.task_done()
                 self.result_q.put((stats, theta, thprev))
         return
 
     def learn(self, paths, parallel=False, linear_search=False):
-        # Generating paths.
         start_time = time.time()
-        # Computing returns and estimating advantage function.
         sample_data = self.process_paths(paths)
         agent_infos = sample_data["agent_infos"]
         obs_n = sample_data["observations"]
         action_n = sample_data["actions"]
         advant_n = sample_data["advantages"]
         n_samples = len(obs_n)
-        inds = np.random.choice(n_samples , int(math.floor(n_samples * pms.subsample_factor)), replace=False)
+        inds = np.random.choice(n_samples , int(math.floor(n_samples * pms.subsample_factor)) , replace=False)
         # inds = range(n_samples)
         obs_n = obs_n[inds]
         action_n = action_n[inds]
         advant_n = advant_n[inds]
         action_dist_means_n = np.array([agent_info["mean"] for agent_info in agent_infos[inds]])
         action_dist_logstds_n = np.array([agent_info["log_std"] for agent_info in agent_infos[inds]])
-        feed = {self.net.obs: obs_n,
-                self.net.advant: advant_n,
-                self.net.old_dist_means_n: action_dist_means_n,
-                self.net.old_dist_logstds_n: action_dist_logstds_n,
+        feed = {self.net.obs: obs_n ,
+                self.net.advant: advant_n ,
+                self.net.old_dist_means_n: action_dist_means_n ,
+                self.net.old_dist_logstds_n: action_dist_logstds_n ,
                 self.net.action_n: action_n
                 }
 
@@ -143,10 +145,10 @@ class TRPOAgentParallel(multiprocessing.Process):
 
         def fisher_vector_product(p):
             feed[self.flat_tangent] = p
-            return self.session.run(self.fvp, feed) + pms.cg_damping * p
+            return self.session.run(self.fvp , feed) + pms.cg_damping * p
 
         g = self.session.run(self.pg , feed_dict=feed)
-        stepdir = krylov.cg(fisher_vector_product, -g, cg_iters=pms.cg_iters)
+        stepdir = krylov.cg(fisher_vector_product , -g , cg_iters=pms.cg_iters)
         shs = 0.5 * stepdir.dot(fisher_vector_product(stepdir))  # theta
         # if shs<0, then the nan error would appear
         lm = np.sqrt(shs / pms.max_kl)
@@ -191,8 +193,6 @@ class TRPOAgentParallel(multiprocessing.Process):
             path["advantages"] = discount(
                 deltas , pms.discount * pms.gae_lambda)
             path["returns"] = np.concatenate(discount(path["rewards"] , pms.discount))
-            path["advantages"] = path["returns"]
-
         observations = np.concatenate([path["observations"] for path in paths])
         actions = np.concatenate([path["actions"] for path in paths])
         rewards = np.concatenate([path["rewards"] for path in paths])
@@ -202,6 +202,21 @@ class TRPOAgentParallel(multiprocessing.Process):
         if pms.center_adv:
             advantages -= np.mean(advantages)
             advantages /= (advantages.std() + 1e-8)
+
+        # for some unknown reaseon, it can not be used
+        # if pms.positive_adv:
+        #     advantages = (advantages - np.min(advantages)) + 1e-8
+
+        # average_discounted_return = \
+        #     np.mean([path["returns"][0] for path in paths])
+        #
+        # undiscounted_returns = [sum(path["rewards"]) for path in paths]
+
+
+        # ev = self.explained_variance_1d(
+        #     np.concatenate(baselines),
+        #     np.concatenate(returns)
+        # )
         samples_data = dict(
             observations=observations ,
             actions=actions ,

@@ -10,14 +10,15 @@ from storage.storage_continous_parallel import ParallelStorage
 seed = 1
 np.random.seed(seed)
 tf.set_random_seed(seed)
-class TRPOAgent(TRPOAgentBase):
 
+"""
+class for continoust action space
+"""
+class TRPOAgent(TRPOAgentBase):
     def __init__(self, env):
         super(TRPOAgent, self).__init__(env)
         self.init_network()
         self.saver = tf.train.Saver(max_to_keep=10)
-
-
 
     def init_network(self):
         """

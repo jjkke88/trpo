@@ -1,10 +1,5 @@
 import os
-import logging
 import gym
-from gym import envs, scoreboard
-from gym.spaces import Discrete, Box
-import tempfile
-import sys
 from environment import Environment
 from agent.agent_continous import TRPOAgent
 from parameters import pms
