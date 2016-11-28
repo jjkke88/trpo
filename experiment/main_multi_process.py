@@ -10,7 +10,8 @@ import gym
 from utils import *
 from agent.agent_continous_parallel_storage import TRPOAgentParallel
 import argparse
-from rollouts import *
+import multiprocessing
+import time
 import json
 from parameters import pms
 from storage.storage_continous_parallel import ParallelStorage

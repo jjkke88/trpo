@@ -2,9 +2,6 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$USER_HOME$/gym/.idea/gym.iml" filepath="$USER_HOME$/gym/.idea/gym.iml" />
-      <module fileurl="file://$PROJECT_DIR$/../parallel-trpo/.idea/parallel-trpo.iml" filepath="$PROJECT_DIR$/../parallel-trpo/.idea/parallel-trpo.iml" />
-      <module fileurl="file://$USER_HOME$/rllab/.idea/rllab.iml" filepath="$USER_HOME$/rllab/.idea/rllab.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/trpo-wyp.iml" filepath="$PROJECT_DIR$/.idea/trpo-wyp.iml" />
     </modules>
   </component>
