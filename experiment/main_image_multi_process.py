@@ -8,16 +8,9 @@ if not os.path.isdir("./log"):
 import gym
 import multiprocessing
 import time
-from agent.agent_continous_parallel_storage import TRPOAgentParallel
-<<<<<<< HEAD
-import argparse
-import multiprocessing
-import time
-import json
-=======
->>>>>>> rnn
+from agent.agent_continous_image_parallel_image import TRPOAgentParallelImage
 from parameters import pms
-from storage.storage_continous_parallel import ParallelStorage
+from storage.storage_continous_parallel_image import ParallelStorageImage
 
 args = pms
 args.max_pathlength = gym.spec(args.environment_name).timestep_limit
@@ -26,9 +19,9 @@ learner_tasks = multiprocessing.JoinableQueue()
 learner_results = multiprocessing.Queue()
 learner_env = gym.make(args.environment_name)
 
-learner = TRPOAgentParallel(learner_env.observation_space, learner_env.action_space, learner_tasks, learner_results)
+learner = TRPOAgentParallelImage(learner_env.observation_space, learner_env.action_space, learner_tasks, learner_results)
 learner.start()
-rollouts = ParallelStorage()
+rollouts = ParallelStorageImage()
 
 learner_tasks.put(1)
 learner_tasks.join()

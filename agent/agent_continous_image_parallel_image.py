@@ -1,12 +1,12 @@
 from utils import *
 import numpy as np
 import tensorflow as tf
-from network.network_continous import NetworkContinous
+from network.network_continous_image import NetworkContinousImage
 from parameters import pms
 
 import multiprocessing
 import krylov
-from baseline.baseline_lstsq import Baseline
+from baseline.baseline_zeros import Baseline
 from distribution.diagonal_gaussian import DiagonalGaussian
 import time
 import math
@@ -20,7 +20,7 @@ tf.set_random_seed(seed)
 """
 class for continoust action space in multi process
 """
-class TRPOAgentParallel(multiprocessing.Process):
+class TRPOAgentParallelImage(multiprocessing.Process):
 
 
     def __init__(self , observation_space , action_space , task_q , result_q):
@@ -51,7 +51,7 @@ class TRPOAgentParallel(multiprocessing.Process):
             device_count={'GPU': 0}
         )
         self.session = tf.Session(config=config)
-        self.net = NetworkContinous("network_continous")
+        self.net = NetworkContinousImage("network_continous_image")
         if pms.min_std is not None:
             log_std_var = tf.maximum(self.net.action_dist_logstds_n, np.log(pms.min_std))
         self.action_dist_stds_n = tf.exp(log_std_var)
@@ -60,7 +60,7 @@ class TRPOAgentParallel(multiprocessing.Process):
         self.likehood_action_dist = self.distribution.log_likelihood_sym(self.net.action_n, self.new_dist_info_vars)
         self.ratio_n = self.distribution.likelihood_ratio_sym(self.net.action_n, self.new_dist_info_vars,
                                                               self.old_dist_info_vars)
-        surr = -tf.reduce_mean(self.ratio_n * self.net.advant)  # Surrogate loss
+        surr = -tf.reduce_sum(self.ratio_n * self.net.advant)  # Surrogate loss
         batch_size = tf.shape(self.net.obs)[0]
         batch_size_float = tf.cast(batch_size , tf.float32)
         kl = tf.reduce_mean(self.distribution.kl_sym(self.old_dist_info_vars, self.new_dist_info_vars))
@@ -118,7 +118,7 @@ class TRPOAgentParallel(multiprocessing.Process):
                     self.save_model(pms.environment_name + "-" + str(paths[3]))
                 self.task_q.task_done()
             else:
-                stats , theta, thprev = self.learn(paths, linear_search=False)
+                stats , theta, thprev = self.learn(paths)
                 self.sff(theta)
                 self.task_q.task_done()
                 self.result_q.put((stats, theta, thprev))
@@ -176,12 +176,14 @@ class TRPOAgentParallel(multiprocessing.Process):
                     theta = linesearch(loss , thprev , fullstep , neggdotstepdir / lm)
                 else:
                     theta = thprev + fullstep
+                    if math.isnan(theta.mean()):
+                        print shs is None
+                        theta = thprev
             accum_fullstep += (theta - thprev)
         theta = thprev + accum_fullstep * pms.subsample_factor
         stats = {}
         stats["sum steps of episodes"] = sample_data["sum_episode_steps"]
         stats["Average sum of rewards per episode"] = episoderewards.mean()
-        stats["surr loss"] = loss(theta)[0]
         stats["Time elapsed"] = "%.2f mins" % ((time.time() - start_time) / 60.0)
         self.logger.log_row([pms.subsample_factor, stats["Average sum of rewards per episode"], self.session.run(self.net.action_dist_logstd_param)[0][0]])
         return stats , theta , thprev
@@ -190,10 +192,20 @@ class TRPOAgentParallel(multiprocessing.Process):
         sum_episode_steps = 0
         for path in paths:
             sum_episode_steps += path['episode_steps']
-            path['baselines'] = self.baseline.predict(path)
+            # r_t+V(S_{t+1})-V(S_t) = returns-baseline
+            # path_baselines = np.append(self.baseline.predict(path) , 0)
+            # # r_t+V(S_{t+1})-V(S_t) = returns-baseline
+            # path["advantages"] = np.concatenate(path["rewards"]) + \
+            #          pms.discount * path_baselines[1:] - \
+            #          path_baselines[:-1]
+            # path["returns"] = np.concatenate(discount(path["rewards"], pms.discount))
+            path_baselines = np.append(self.baseline.predict(path) , 0)
+            deltas = np.concatenate(path["rewards"]) + \
+                     pms.discount * path_baselines[1:] - \
+                     path_baselines[:-1]
+            path["advantages"] = discount(
+                deltas , pms.discount * pms.gae_lambda)
             path["returns"] = np.concatenate(discount(path["rewards"] , pms.discount))
-            path["advantages"] = path['returns'] - path['baselines']
-
         observations = np.concatenate([path["observations"] for path in paths])
         actions = np.concatenate([path["actions"] for path in paths])
         rewards = np.concatenate([path["rewards"] for path in paths])
@@ -201,7 +213,7 @@ class TRPOAgentParallel(multiprocessing.Process):
         env_infos = np.concatenate([path["env_infos"] for path in paths])
         agent_infos = np.concatenate([path["agent_infos"] for path in paths])
         if pms.center_adv:
-            advantages -= advantages.mean()
+            advantages -= np.mean(advantages)
             advantages /= (advantages.std() + 1e-8)
 
         # for some unknown reaseon, it can not be used

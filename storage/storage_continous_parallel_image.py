@@ -1,14 +1,11 @@
-import numpy as np
-import tensorflow as tf
 import multiprocessing
 from utils import *
 import gym
 import time
-import copy
 from random import randint
 from parameters import pms
-import math
-from network.network_continous import NetworkContinous
+from network.network_continous_image import NetworkContinousImage
+import cv2
 
 
 class Actor(multiprocessing.Process):
@@ -20,7 +17,6 @@ class Actor(multiprocessing.Process):
         self.args = args
         self.monitor = monitor
         # pms.max_path_length = gym.spec(args.environment_name).timestep_limit
-
 
     def get_action(self, obs):
         if self.net == None:
@@ -35,7 +31,7 @@ class Actor(multiprocessing.Process):
         else:
             action = action_dist_means_n[0]
         # action = np.clip(action, pms.min_a, pms.max_a)
-        return action , dict(mean=action_dist_means_n[0] , log_std=np.exp(action_dist_logstds_n[0]))
+        return action, dict(mean=action_dist_means_n[0] , log_std=np.exp(action_dist_logstds_n[0]))
 
     def run(self):
         self.env = gym.make(self.args.environment_name)
@@ -43,7 +39,7 @@ class Actor(multiprocessing.Process):
         if self.monitor:
             self.env.monitor.start('monitor/', force=True)
 
-        self.net = NetworkContinous("rollout_network" + str(self.actor_id))
+        self.net = NetworkContinousImage("rollout_network" + str(self.actor_id))
         config = tf.ConfigProto(
             device_count={'GPU': 0}
         )
@@ -97,8 +93,11 @@ class Actor(multiprocessing.Process):
         if pms.render:
             self.env.render()
         o = self.env.reset()
+
         episode_steps = 0
         for i in xrange(pms.max_path_length - 1):
+            o = self.env.render('rgb_array')
+            o = self.deal_image(o)
             a, agent_info = self.get_action(o)
             next_o, reward, terminal, env_info = self.env.step(a)
             observations.append(o)
@@ -122,7 +121,24 @@ class Actor(multiprocessing.Process):
         )
         return path
 
-class ParallelStorage():
+    def deal_image(self , image):
+        # index = len(self.obs_origin)
+        # image_end = []
+        # if index < pms.history_number:
+        #     image_end = self.obs_origin[0:index]
+        #     for i in range(pms.history_number - index):
+        #         image_end.append(image)
+        # else:
+        #     image_end = self.obs_origin[index - pms.history_number:index]
+        #
+        # image_end = np.concatenate(image_end)
+        # # image_end = image_end.reshape((pms.obs_height, pms.obs_width, pms.history_number))
+        # obs = cv2.resize(cv2.cvtColor(image_end , cv2.COLOR_RGB2GRAY) / 255. , (pms.obs_height , pms.obs_width))
+        obs = cv2.resize(image, (pms.obs_height, pms.obs_width))
+        # obs = np.transpose(np.array(obs), (2, 0, 1))
+        return obs
+
+class ParallelStorageImage():
     def __init__(self):
         self.args = pms
         self.tasks = multiprocessing.JoinableQueue()

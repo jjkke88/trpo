@@ -1,7 +1,7 @@
 import os
 import gym
 from environment import Environment
-from agent.agent_continous import TRPOAgent
+from agent.agent_continous_rnn import TRPOAgent
 from parameters import pms
 
 if not os.path.isdir("./checkpoint"):

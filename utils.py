@@ -15,6 +15,14 @@ tf.set_random_seed(seed)
 dtype = tf.float32
 
 def discount(x, gamma):
+    """
+    scipy.signal.lfilter(b, a, x, axis=-1, zi=None)[source]
+    a[0]*y[n] = b[0]*x[n] + b[1]*x[n-1] + ... + b[M]*x[n-M]
+                      - a[1]*y[n-1] - ... - a[N]*y[n-N]
+    :param x:
+    :param gamma:
+    :return:
+    """
     assert x.ndim >= 1
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 

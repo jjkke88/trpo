@@ -14,8 +14,11 @@ seed = 1
 np.random.seed(seed)
 tf.set_random_seed(seed)
 
-class TRPOAgentBase(object):
 
+"""
+Base class for TRPOAgent
+"""
+class TRPOAgentBase(object):
     def __init__(self, env):
         self.env = env
         # if not isinstance(env.observation_space, Box) or \
@@ -66,7 +69,6 @@ class TRPOAgentBase(object):
 
     def train_mini_batch(self, parallel=False, linear_search=True):
         # Generating paths.
-
         self.get_samples(pms.paths_number)
         paths = self.storage.get_paths()  # get_paths
         # Computing returns and estimating advantage function.
