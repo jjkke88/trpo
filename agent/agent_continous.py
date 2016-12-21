@@ -77,7 +77,7 @@ class TRPOAgent(TRPOAgentBase):
         # self.load_model(pms.checkpoint_file)
 
     def init_logger(self):
-        head = ["std", "rewards"]
+        head = ["rewards", "std"]
         self.logger = Logger(head)
 
     def learn(self):
@@ -88,7 +88,7 @@ class TRPOAgent(TRPOAgentBase):
             print self.gf().mean()
             stats, theta, thprev = self.train_mini_batch(linear_search=False)
             self.sff(theta)
-            self.logger.log_row([stats["Average sum of rewards per episode"], self.session.run(self.net.action_dist_logstd_param)])
+            self.logger.log_row([stats["Average sum of rewards per episode"], self.session.run(self.net.action_dist_logstd_param)[0][0]])
             for k , v in stats.iteritems():
                 print(k + ": " + " " * (40 - len(k)) + str(v))
             if iter_num % pms.save_model_times == 0:

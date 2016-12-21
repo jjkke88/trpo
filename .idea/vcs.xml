@@ -4,6 +4,9 @@
     <mapping directory="" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../async_rl" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../parallel-trpo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../parallel-trpo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../trpo_rnn" vcs="Git" />
+    <mapping directory="$USER_HOME$/gym" vcs="Git" />
     <mapping directory="$USER_HOME$/gym" vcs="Git" />
   </component>
 </project>

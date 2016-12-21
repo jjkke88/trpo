@@ -1,7 +1,7 @@
 from utils import *
 import numpy as np
 import tensorflow as tf
-from network.network_continous_image import NetworkContinous
+from network.network_continous_image import NetworkContinousImage
 from baseline.baseline_tf_image import BaselineTfImage
 from storage.storage_image import Storage
 from parameters import pms
@@ -36,7 +36,7 @@ class TRPOAgent(TRPOAgentBase):
         self.action_dist_logstds_n
         var_list
         """
-        self.net = NetworkContinous("network_continous")
+        self.net = NetworkContinousImage("network_continous")
         if pms.min_std is not None:
             log_std_var = tf.maximum(self.net.action_dist_logstds_n, np.log(pms.min_std))
         self.action_dist_stds_n = tf.exp(log_std_var)
