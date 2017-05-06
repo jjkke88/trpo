@@ -1,3 +1,5 @@
+# recently the algorithm has been moved to https://github.com/jjkke88/RL_toolbox
+
 # trpo
 trust region policy optimitztion base on gym and tensorflow
 
